@@ -28,4 +28,14 @@ export default defineConfig({
     ],
   },
   plugins: lazyPlugins(() => [react()]),
+  server: {
+    // In development, `vp dev` serves the app and forwards these to `coanda serve`.
+    proxy: {
+      "/api": `http://127.0.0.1:${process.env.COANDA_PORT ?? 4517}`,
+      "/media": `http://127.0.0.1:${process.env.COANDA_PORT ?? 4517}`,
+    },
+  },
+  test: {
+    include: ["src/**/*.test.{ts,tsx}", "server/**/*.test.ts"],
+  },
 });
