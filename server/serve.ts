@@ -1,9 +1,18 @@
 // The local server that the browser app talks to, and that `coanda wait` and
 // `coanda reply` reach over the same port.
-import { execFileSync } from "node:child_process";
-import { createReadStream, existsSync, statSync, watch } from "node:fs";
+import { execFileSync, spawn } from "node:child_process";
+import {
+  createReadStream,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  statSync,
+  watch,
+  writeFileSync,
+  type FSWatcher,
+} from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { userInfo } from "node:os";
+import { homedir, userInfo } from "node:os";
 import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type {
@@ -11,8 +20,14 @@ import type {
   ServerEvent,
   ServerInfo,
   ServerStatus,
+  ClaudeAuth,
   SentAnnotation,
+  TreeNode,
+  VideoInfo,
 } from "../shared/types.ts";
+import { defaultConfigFile, loadConfig, saveConfig, withRoot } from "./config.ts";
+import { AgentManager } from "./agents.ts";
+import { pickFolder } from "./pickFolder.ts";
 import { isVideoFile, Store } from "./store.ts";
 
 const DIST = resolve(dirname(fileURLToPath(import.meta.url)), "..", "dist");
@@ -43,18 +58,39 @@ function gitUserName(cwd: string): string {
 }
 
 export interface ServeOptions {
-  root: string;
+  /** Folder to review. When absent, the folder remembered from the last run is used. */
+  root?: string;
   port: number;
+  /** Where the remembered folder is kept. Defaults to ~/.coanda/config.json. */
+  configFile?: string;
   /** Overrides the reviewer name taken from git config. */
   user?: string;
+  /** Replaces the OS folder chooser; the tests use this. */
+  pickFolder?: (initial?: string) => Promise<string | null>;
+  /** How to run Claude Code, as command and leading arguments. Defaults to ["claude"]. */
+  claudeCommand?: string[];
+  /** Where Claude session IDs and transcripts are kept. Defaults to beside the config file. */
+  sessionsFile?: string;
+  /** Where the ElevenLabs API key is saved. */
+  elevenLabsKeyFile?: string;
 }
 
-export function serve(opts: ServeOptions): Promise<{ close: () => void; port: number }> {
-  const store = new Store(opts.root);
-  const info: ServerInfo = {
-    root: store.root,
-    rootName: store.rootName(),
-    user: opts.user ?? gitUserName(store.root),
+export function serve(
+  opts: ServeOptions,
+): Promise<{ close: () => void; port: number; root: string | null }> {
+  const configFile = opts.configFile ?? defaultConfigFile();
+  let config = loadConfig(configFile);
+  let store: Store | null = null;
+  let watcher: FSWatcher | null = null;
+  let agents: AgentManager | null = null;
+  const claudeCommand = opts.claudeCommand ?? ["claude"];
+  const keyFile = opts.elevenLabsKeyFile ?? defaultElevenLabsKeyFile();
+  const info: ServerInfo = { root: null, rootName: "", user: opts.user ?? "", recent: [] };
+
+  /** The current folder's store; an error when no folder has been chosen yet. */
+  const need = (): Store => {
+    if (!store) throw new HttpError(409, "No folder has been chosen yet");
+    return store;
   };
 
   const sseClients = new Set<ServerResponse>();
@@ -80,14 +116,16 @@ export function serve(opts: ServeOptions): Promise<{ close: () => void; port: nu
 
   const undelivered = (): SentAnnotation[] => {
     const out: SentAnnotation[] = [];
-    for (const { video, annotations } of store.allAnnotated()) {
+    if (!store) return out;
+    for (const { video, annotations, voiceReady } of store.allAnnotated()) {
       for (const a of annotations) {
         if (a.status !== "sent" || delivered.has(`${video}#${a.id}`)) continue;
         out.push({
           ...a,
           video,
-          videoFile: store.resolvePath(video),
-          frameFile: a.frame ? store.resolvePath(a.frame) : undefined,
+          videoFile: store!.resolvePath(video),
+          frameFile: a.frame ? store!.resolvePath(a.frame) : undefined,
+          voiceReady: voiceReady ?? false,
         });
       }
     }
@@ -104,7 +142,7 @@ export function serve(opts: ServeOptions): Promise<{ close: () => void; port: nu
     emit({ type: "status" });
   };
 
-  const watcher = watch(store.root, { recursive: true }, (_type, filename) => {
+  const onFileChange = (filename: string | null) => {
     if (!filename) return;
     const rel = filename.split("\\").join("/");
     if (rel.split("/").some((part) => part.startsWith("."))) return;
@@ -117,11 +155,48 @@ export function serve(opts: ServeOptions): Promise<{ close: () => void; port: nu
     } else if (!rel.includes(".coanda/")) {
       emit({ type: "tree" });
     }
-  });
+  };
+
+  const setRoot = (folder: string) => {
+    const full = resolve(folder);
+    if (!existsSync(full) || !statSync(full).isDirectory()) {
+      throw new HttpError(400, `Not a folder: ${folder}`);
+    }
+    watcher?.close();
+    store = new Store(full);
+    watcher = watch(full, { recursive: true }, (_type, filename) => onFileChange(filename));
+    delivered.clear();
+    agents?.stopAll();
+    agents = new AgentManager({
+      cwd: full,
+      command: claudeCommand,
+      sessionsFile: opts.sessionsFile ?? join(dirname(configFile), "sessions.json"),
+      onChange: (project) => {
+        emit({ type: "agent", project });
+        emit({ type: "tree" });
+      },
+      onReply: (video, id, text) => claudeReply(video, id, text),
+    });
+    config = withRoot(config, full);
+    saveConfig(configFile, config);
+    Object.assign(info, {
+      root: full,
+      rootName: store.rootName(),
+      user: opts.user ?? gitUserName(full),
+      recent: config.recent,
+    });
+    emit({ type: "root" });
+    emit({ type: "status" });
+  };
+
+  const startRoot = opts.root ?? config.root;
+  if (startRoot && existsSync(startRoot)) setRoot(startRoot);
+  else
+    Object.assign(info, { user: opts.user ?? gitUserName(process.cwd()), recent: config.recent });
 
   const findAnnotation = (video: string, id: number, change: (a: Annotation) => void) => {
     let found = false;
-    store.update(video, (data) => {
+    need().update(video, (data) => {
       const a = data.annotations.find((x) => x.id === id);
       if (a) {
         change(a);
@@ -131,6 +206,28 @@ export function serve(opts: ServeOptions): Promise<{ close: () => void; port: nu
     if (!found) throw new HttpError(404, `No annotation ${id} on ${video}`);
     emit({ type: "annotations", video });
     emit({ type: "tree" });
+  };
+
+  const claudeReply = (video: string, id: number, text: string) =>
+    findAnnotation(video, id, (a) => {
+      a.thread.push({ who: "claude", text: text.trim(), at: new Date().toISOString() });
+      a.status = "replied";
+    });
+
+  /** The tree, with each project folder's Claude session status. */
+  const treeWithAgents = (): TreeNode[] => {
+    if (!store) return [];
+    const mark = (nodes: TreeNode[]): TreeNode[] =>
+      nodes.map((n) =>
+        n.kind === "folder"
+          ? {
+              ...n,
+              children: mark(n.children ?? []),
+              ...(n.project ? { agentStatus: agents?.status(n.path) ?? "idle" } : {}),
+            }
+          : n,
+      );
+    return mark(store.tree());
   };
 
   const handle = async (req: IncomingMessage, res: ServerResponse) => {
@@ -144,7 +241,79 @@ export function serve(opts: ServeOptions): Promise<{ close: () => void; port: nu
       const status: ServerStatus = { waiting: waiters.size > 0, undelivered: undelivered().length };
       return json(res, 200, status);
     }
-    if (path === "/api/tree") return json(res, 200, store.tree());
+    if (path === "/api/tree") return json(res, 200, treeWithAgents());
+
+    if (path === "/api/project" && method === "GET") {
+      const folder = url.searchParams.get("folder");
+      const store = need();
+      return json(res, 200, {
+        project: folder !== null ? store.projectForFolder(folder) : store.projectFor(video),
+      });
+    }
+
+    if (path === "/api/make-project" && method === "POST") {
+      const folder = url.searchParams.get("folder") ?? "";
+      need().makeProject(folder);
+      emit({ type: "tree" });
+      return json(res, 200, { project: folder });
+    }
+
+    const project = url.searchParams.get("project");
+
+    if (path === "/api/agent" && method === "GET") {
+      if (project === null || !agents) throw new HttpError(400, "Give a project");
+      return json(res, 200, agents.state(project));
+    }
+
+    if (path === "/api/agent/message" && method === "POST") {
+      if (project === null || !agents) throw new HttpError(400, "Give a project");
+      const body = (await readJson(req)) as { text?: string };
+      if (!body.text?.trim()) throw new HttpError(400, "A message needs text");
+      agents.send(project, body.text.trim());
+      return json(res, 200, agents.state(project));
+    }
+
+    if (path === "/api/agent/stop" && method === "POST") {
+      if (project === null || !agents) throw new HttpError(400, "Give a project");
+      agents.stop(project);
+      return json(res, 200, agents.state(project));
+    }
+
+    if (path === "/api/claude-auth" && method === "GET") {
+      return json(res, 200, await claudeAuth(claudeCommand));
+    }
+
+    if (path === "/api/claude-login" && method === "POST") {
+      const [cmd, ...base] = claudeCommand;
+      spawn(cmd, [...base, "auth", "login"], { detached: true, stdio: "ignore" }).unref();
+      return json(res, 200, { started: true });
+    }
+
+    if (path === "/api/settings" && method === "GET") {
+      return json(res, 200, { elevenLabsKey: existsSync(keyFile) });
+    }
+
+    if (path === "/api/settings" && method === "POST") {
+      const body = (await readJson(req)) as { elevenLabsKey?: string };
+      if (typeof body.elevenLabsKey === "string" && body.elevenLabsKey.trim()) {
+        mkdirSync(dirname(keyFile), { recursive: true });
+        writeFileSync(keyFile, body.elevenLabsKey.trim());
+      }
+      return json(res, 200, { elevenLabsKey: existsSync(keyFile) });
+    }
+
+    if (path === "/api/pick-folder" && method === "POST") {
+      const picked = await (opts.pickFolder ?? pickFolder)(info.root ?? undefined);
+      if (picked) setRoot(picked);
+      return json(res, 200, { picked: picked !== null, info });
+    }
+
+    if (path === "/api/root" && method === "POST") {
+      const body = (await readJson(req)) as { path?: string };
+      if (!body.path?.trim()) throw new HttpError(400, "Give a folder path");
+      setRoot(body.path.trim());
+      return json(res, 200, info);
+    }
 
     if (path === "/api/events") {
       res.writeHead(200, {
@@ -159,10 +328,11 @@ export function serve(opts: ServeOptions): Promise<{ close: () => void; port: nu
     }
 
     if (path === "/api/annotations" && method === "GET") {
-      return json(res, 200, store.read(video).annotations);
+      return json(res, 200, need().read(video).annotations);
     }
 
     if (path === "/api/annotations" && method === "POST") {
+      const store = need();
       const body = (await readJson(req)) as Partial<Annotation> & { frameDataUrl?: string };
       if (!body.text?.trim()) throw new HttpError(400, "An annotation needs text");
       let created: Annotation | undefined;
@@ -213,13 +383,52 @@ export function serve(opts: ServeOptions): Promise<{ close: () => void; port: nu
           a.status = "open";
         });
       }
-      return json(res, 200, store.read(video).annotations);
+      return json(res, 200, need().read(video).annotations);
+    }
+
+    if (path === "/api/video" && method === "GET") {
+      const store = need();
+      const result: VideoInfo = {
+        voiceReady: store.read(video).voiceReady ?? false,
+        subtitles: store.subtitlesFor(video),
+      };
+      return json(res, 200, result);
+    }
+
+    if (path === "/api/video" && method === "POST") {
+      const body = (await readJson(req)) as { voiceReady?: boolean };
+      need().update(video, (data) => {
+        data.voiceReady = Boolean(body.voiceReady);
+      });
+      emit({ type: "annotations", video });
+      return json(res, 200, { voiceReady: Boolean(body.voiceReady) });
+    }
+
+    if (path.startsWith("/subtitles/")) {
+      // Subtitles as WebVTT, which is what a <track> element reads. .srt differs only in its
+      // header and in using a comma before the milliseconds.
+      const file = need().resolvePath(decodeURIComponent(path.slice("/subtitles/".length)));
+      if (!/\.(srt|vtt)$/i.test(file) || !existsSync(file)) throw new HttpError(404, "Not found");
+      let text = readFileSync(file, "utf8").replace(/^﻿/, "");
+      if (/\.srt$/i.test(file)) {
+        text = "WEBVTT\n\n" + text.replace(/(\d\d:\d\d:\d\d),(\d\d\d)/g, "$1.$2");
+      }
+      res.writeHead(200, {
+        "Content-Type": "text/vtt; charset=utf-8",
+        "Cache-Control": "no-cache",
+      });
+      return res.end(text);
     }
 
     if (path === "/api/send" && method === "POST") {
+      const store = need();
+      // With a project, the project's open annotations go to its Claude session. Without one,
+      // every open annotation goes to whoever runs `coanda wait`.
+      const inProject = (v: string) =>
+        project === null || project === "" || v.startsWith(project + "/");
       let count = 0;
       for (const { video: v, annotations } of store.allAnnotated()) {
-        if (!annotations.some((a) => a.status === "open")) continue;
+        if (!inProject(v) || !annotations.some((a) => a.status === "open")) continue;
         store.update(v, (data) => {
           for (const a of data.annotations) {
             if (a.status === "open") {
@@ -232,7 +441,19 @@ export function serve(opts: ServeOptions): Promise<{ close: () => void; port: nu
         emit({ type: "annotations", video: v });
       }
       emit({ type: "tree" });
-      releaseWaiters();
+      if (project !== null && agents) {
+        const batch = undelivered().filter((a) => inProject(a.video));
+        for (const a of batch) delivered.add(`${a.video}#${a.id}`);
+        if (batch.length) {
+          agents.send(
+            project,
+            "Annotations from the reviewer:\n\n" + JSON.stringify(batch, null, 2),
+            `Sent ${batch.length}`,
+          );
+        }
+      } else {
+        releaseWaiters();
+      }
       emit({ type: "status" });
       return json(res, 200, { sent: count });
     }
@@ -246,9 +467,16 @@ export function serve(opts: ServeOptions): Promise<{ close: () => void; port: nu
       }
       waiters.add(res);
       emit({ type: "status" });
+      // Answer with an empty list after a while, so clients (Node's fetch gives up after
+      // 300 s) never wait on one request for too long; `coanda wait` just asks again.
+      const hold = Math.min(Number(url.searchParams.get("hold") ?? 50), 240) * 1000;
+      const timer = setTimeout(() => {
+        if (waiters.delete(res)) json(res, 200, []);
+      }, hold);
       // The response's close, not the request's: a GET's request side closes as soon
       // as its (empty) body has been read.
       res.on("close", () => {
+        clearTimeout(timer);
         if (waiters.delete(res)) emit({ type: "status" });
       });
       return;
@@ -259,10 +487,7 @@ export function serve(opts: ServeOptions): Promise<{ close: () => void; port: nu
       if (!body.video || !body.id || !body.text?.trim()) {
         throw new HttpError(400, "A reply needs video, id and text");
       }
-      findAnnotation(body.video, Number(body.id), (a) => {
-        a.thread.push({ who: "claude", text: body.text!.trim(), at: new Date().toISOString() });
-        a.status = "replied";
-      });
+      claudeReply(body.video, Number(body.id), body.text);
       return json(res, 200, { ok: true });
     }
 
@@ -270,7 +495,7 @@ export function serve(opts: ServeOptions): Promise<{ close: () => void; port: nu
       return sendFile(
         req,
         res,
-        store.resolvePath(decodeURIComponent(path.slice("/media/".length))),
+        need().resolvePath(decodeURIComponent(path.slice("/media/".length))),
       );
     }
 
@@ -305,8 +530,10 @@ export function serve(opts: ServeOptions): Promise<{ close: () => void; port: nu
       const port = typeof address === "object" && address ? address.port : opts.port;
       resolvePromise({
         port,
+        root: info.root,
         close: () => {
-          watcher.close();
+          watcher?.close();
+          agents?.stopAll();
           for (const c of sseClients) c.end();
           for (const w of waiters) w.end();
           server.close();
@@ -314,6 +541,44 @@ export function serve(opts: ServeOptions): Promise<{ close: () => void; port: nu
       });
     });
   });
+}
+
+/** Asks Claude Code whether it is logged in. */
+function claudeAuth(command: string[]): Promise<ClaudeAuth> {
+  const [cmd, ...base] = command;
+  return new Promise((resolvePromise) => {
+    let out = "";
+    try {
+      const child = spawn(cmd, [...base, "auth", "status", "--json"], { windowsHide: true });
+      child.stdout.on("data", (b: Buffer) => (out += b.toString()));
+      child.on("error", () => resolvePromise({ loggedIn: false }));
+      child.on("close", () => {
+        try {
+          const data = JSON.parse(out) as { loggedIn?: boolean; email?: string };
+          resolvePromise({ loggedIn: Boolean(data.loggedIn), email: data.email });
+        } catch {
+          resolvePromise({ loggedIn: false });
+        }
+      });
+    } catch {
+      resolvePromise({ loggedIn: false });
+    }
+  });
+}
+
+/** Where the training-videos tools read the ElevenLabs key: <tts folder>/elevenlabs_key.txt,
+ * with the tts folder from ~/.bloom-training-videos.json, or C:/tts. */
+function defaultElevenLabsKeyFile(): string {
+  let tts = "C:/tts";
+  try {
+    const cfg = JSON.parse(
+      readFileSync(join(homedir(), ".bloom-training-videos.json"), "utf8"),
+    ) as { tts?: string };
+    if (cfg.tts) tts = cfg.tts;
+  } catch {
+    // No machine config: the tools' own default.
+  }
+  return join(tts, "elevenlabs_key.txt");
 }
 
 class HttpError extends Error {

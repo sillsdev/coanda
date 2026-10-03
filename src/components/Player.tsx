@@ -10,8 +10,8 @@ import {
 } from "react";
 import type { Annotation } from "../../shared/types.ts";
 import type { NewAnnotation } from "../api.ts";
-import { avatarColor, formatTime, initials, stem } from "../format.ts";
-import { PauseIcon, PlayIcon } from "./icons.tsx";
+import { avatarColor, formatTime, initials } from "../format.ts";
+import { CaptionsIcon, MicIcon, PauseIcon, PlayIcon } from "./icons.tsx";
 
 /** How close (in seconds) the playhead must be for an annotation to show on the frame. */
 const SHOW_WINDOW = 1.5;
@@ -25,7 +25,15 @@ interface Draft {
   x2?: number;
   y2?: number;
   text: string;
+  /** Where the comment box opens, in pixels from the stage's top-left. It grows right and
+   * down from there when resized. */
+  boxLeft: number;
+  boxTop: number;
 }
+
+/** The comment box's size when it opens, used to place it beside the pin or arrow tip. */
+const BOX_WIDTH = 276;
+const BOX_HEIGHT = 190;
 
 export interface PlayerHandle {
   /** Pauses and jumps to a time, in seconds. */
@@ -41,13 +49,19 @@ interface Props {
   me: string;
   ref?: Ref<PlayerHandle>;
   renderedAt: number | null;
+  voiceReady: boolean;
+  onToggleVoice: () => void;
+  /** URLs of subtitle tracks for this video, as WebVTT. */
+  subtitles: string[];
+  showSubtitles: boolean;
+  onToggleSubtitles: () => void;
   onSelect: (a: Annotation) => void;
   onDeselect: () => void;
   onCreate: (a: NewAnnotation) => Promise<void>;
 }
 
 export function Player(props: Props) {
-  const { video, src, annotations, activeId, showResolved, me, renderedAt, ref } = props;
+  const { src, annotations, activeId, showResolved, me, renderedAt, ref } = props;
   const videoRef = useRef<HTMLVideoElement>(null);
   const areaRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -89,6 +103,42 @@ export function Player(props: Props) {
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
   }, [playing]);
+
+  // Show or hide the subtitle track. The first track is used when there are several.
+  const { showSubtitles, subtitles } = props;
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    const sync = () => {
+      Array.from(v.textTracks).forEach((track, i) => {
+        track.mode = showSubtitles && i === 0 ? "showing" : "disabled";
+      });
+    };
+    sync();
+    v.textTracks.addEventListener("addtrack", sync);
+    return () => v.textTracks.removeEventListener("addtrack", sync);
+  }, [showSubtitles, subtitles]);
+
+  // Left and right arrows step the playhead by a second, unless the user is typing.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      if (e.altKey || e.ctrlKey || e.metaKey) return;
+      const target = e.target as HTMLElement | null;
+      if (target?.closest("input, textarea, select, [contenteditable]")) return;
+      const v = videoRef.current;
+      if (!v || !Number.isFinite(v.duration)) return;
+      e.preventDefault();
+      const next = Math.min(
+        v.duration,
+        Math.max(0, v.currentTime + (e.key === "ArrowLeft" ? -1 : 1)),
+      );
+      v.currentTime = next;
+      setT(next);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   useImperativeHandle(
     ref,
@@ -161,10 +211,24 @@ export function Player(props: Props) {
       ((drag.x2 - drag.x) * stage.w) / 100,
       ((drag.y2 - drag.y) * stage.h) / 100,
     );
+    const isArrow = dist > ARROW_MIN_PX;
+    const ex = ((isArrow ? drag.x2 : drag.x) / 100) * stage.w;
+    const ey = ((isArrow ? drag.y2 : drag.y) / 100) * stage.h;
+    const boxLeft = ex > stage.w * 0.58 ? ex - BOX_WIDTH - 22 : ex + 22;
+    const boxTop = Math.max(0, ey > stage.h * 0.52 ? ey - BOX_HEIGHT + 24 : ey - 24);
     setDraft(
-      dist > ARROW_MIN_PX
-        ? { kind: "arrow", x: drag.x, y: drag.y, x2: drag.x2, y2: drag.y2, text: "" }
-        : { kind: "pin", x: drag.x, y: drag.y, text: "" },
+      isArrow
+        ? {
+            kind: "arrow",
+            x: drag.x,
+            y: drag.y,
+            x2: drag.x2,
+            y2: drag.y2,
+            text: "",
+            boxLeft,
+            boxTop,
+          }
+        : { kind: "pin", x: drag.x, y: drag.y, text: "", boxLeft, boxTop },
     );
     setDrag(null);
     setTimeout(() => textRef.current?.focus(), 0);
@@ -241,39 +305,29 @@ export function Player(props: Props) {
     arrows.push({ key: "drag", x1: p.x, y1: p.y, x2: q.x, y2: q.y, dashed: true, opacity: 0.9 });
   }
 
-  let popStyle: CSSProperties = {};
-  if (draft) {
-    const ex = draft.kind === "arrow" ? draft.x2! : draft.x;
-    const ey = draft.kind === "arrow" ? draft.y2! : draft.y;
-    const tx = ex > 58 ? "calc(-100% - 22px)" : "22px";
-    const ty = ey > 52 ? "calc(-100% + 24px)" : "-24px";
-    popStyle = { left: `${ex}%`, top: `${ey}%`, transform: `translate(${tx}, ${ty})` };
-  }
+  const popStyle: CSSProperties = draft ? { left: draft.boxLeft, top: draft.boxTop } : {};
 
   const marks = annotations.filter((a) => a.status !== "resolved" || showResolved);
   const progress = duration ? (t / duration) * 100 : 0;
-  const folder = video.includes("/") ? video.slice(0, video.lastIndexOf("/") + 1) : "";
 
   return (
     <main className="player">
       <div className="title-row">
-        <div className="title-block">
-          <div className="title" data-testid="video-title">
-            {stem(video.split("/").pop() ?? video)}
-          </div>
-          <div className="subtitle">
-            {folder && <span className="mono">{folder}</span>}
-            {folder && " · "}
-            {formatTime(duration)}
-          </div>
-        </div>
         {renderedAt && (
           <span className="fresh" data-testid="fresh-render">
             <span className="dot" />
-            New render at{" "}
-            {new Date(renderedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+            New render
           </span>
         )}
+        <button
+          className={`toggle${props.voiceReady ? " on" : ""}`}
+          aria-pressed={props.voiceReady}
+          data-testid="voice-ready"
+          onClick={props.onToggleVoice}
+        >
+          <MicIcon />
+          Ready for voice
+        </button>
       </div>
 
       <div className="stage-area" ref={areaRef}>
@@ -303,13 +357,11 @@ export function Player(props: Props) {
                 setT(e.currentTarget.currentTime);
               }}
               onSeeked={(e) => setT(e.currentTarget.currentTime)}
-            />
-            {!playing && (
-              <div className="paused-pill">
-                <PauseIcon size={10} />
-                <span>PAUSED {formatTime(t)}</span>
-              </div>
-            )}
+            >
+              {props.subtitles.map((url) => (
+                <track key={url} kind="subtitles" src={url} />
+              ))}
+            </video>
           </div>
           <svg className="overlay" width={stage.w} height={stage.h}>
             {arrows.map((a) => (
@@ -373,8 +425,7 @@ export function Player(props: Props) {
                 }}
               />
               <div className="draft-actions">
-                <span className="mono hint-key">Ctrl+↵ save</span>
-                <button className="btn btn-ghost-outline" onClick={() => setDraft(null)}>
+                <button className="btn btn-ghost-outline push-right" onClick={() => setDraft(null)}>
                   Cancel
                 </button>
                 <button
@@ -433,15 +484,16 @@ export function Player(props: Props) {
         <span className="time mono" data-testid="time">
           {formatTime(t)} / {formatTime(duration)}
         </span>
-      </div>
-      <div className="hints">
-        <span>
-          <span className="key mono">Click</span>comment on a spot
-        </span>
-        <span>
-          <span className="key mono">Drag</span>draw an arrow
-        </span>
-        <span className="dim">Playback pauses when you annotate</span>
+        <button
+          className={`toggle${props.showSubtitles ? " on" : ""}`}
+          aria-pressed={props.showSubtitles}
+          disabled={!props.subtitles.length}
+          data-testid="subtitles"
+          onClick={props.onToggleSubtitles}
+        >
+          <CaptionsIcon />
+          Subtitles
+        </button>
       </div>
     </main>
   );

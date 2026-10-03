@@ -1,68 +1,84 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { TreeNode } from "../../shared/types.ts";
-import { ChevronIcon, FolderIcon, PlayIcon, SearchIcon } from "./icons.tsx";
+import { AgentStatusBadge } from "./AgentStatusBadge.tsx";
+import { FolderPicker } from "./FolderPicker.tsx";
+import { ChevronIcon, FolderIcon, PlayIcon } from "./icons.tsx";
 
 interface Props {
   rootName: string;
-  rootPath: string;
+  rootPath: string | null;
+  recent: string[];
+  onBrowse: () => Promise<void>;
+  onChooseRoot: (path: string) => Promise<void>;
   tree: TreeNode[];
+  /** The selected video, or folder. */
   selected?: string;
   onSelect: (path: string) => void;
+  onSelectFolder: (path: string) => void;
+  onMakeProject: (folder: string) => void;
 }
 
-function filterTree(nodes: TreeNode[], text: string): TreeNode[] {
-  if (!text) return nodes;
-  const needle = text.toLowerCase();
-  return nodes.flatMap((n) => {
-    if (n.kind === "video") return n.path.toLowerCase().includes(needle) ? [n] : [];
-    const children = filterTree(n.children ?? [], text);
-    return children.length ? [{ ...n, children }] : [];
-  });
+function hasVideo(node: TreeNode): boolean {
+  return node.kind === "video" || (node.children ?? []).some(hasVideo);
 }
 
-export function VideoTree({ rootName, rootPath, tree, selected, onSelect }: Props) {
-  const [filter, setFilter] = useState("");
-  const [closed, setClosed] = useState<Set<string>>(new Set());
+function unresolvedBelow(node: TreeNode): number {
+  if (node.kind === "video") return node.unresolved ?? 0;
+  return (node.children ?? []).reduce((sum, n) => sum + unresolvedBelow(n), 0);
+}
+
+export function VideoTree(props: Props) {
+  const { tree, selected, onSelect } = props;
+  // Folders the user has opened or closed, away from how they start out.
+  const [toggled, setToggled] = useState<Set<string>>(new Set());
+  const [menu, setMenu] = useState<{ x: number; y: number; node: TreeNode } | null>(null);
+
+  useEffect(() => {
+    if (!menu) return;
+    const close = () => setMenu(null);
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && close();
+    window.addEventListener("pointerdown", close);
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("blur", close);
+    return () => {
+      window.removeEventListener("pointerdown", close);
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("blur", close);
+    };
+  }, [menu]);
 
   const toggle = (path: string) =>
-    setClosed((prev) => {
+    setToggled((prev) => {
       const next = new Set(prev);
       if (next.has(path)) next.delete(path);
       else next.add(path);
       return next;
     });
 
-  const rows: { node: TreeNode; depth: number }[] = [];
+  // A folder starts out open when there is a video somewhere inside it.
+  const isOpen = (node: TreeNode) => hasVideo(node) !== toggled.has(node.path);
+
+  const rows: { node: TreeNode; depth: number; open: boolean }[] = [];
   const walk = (nodes: TreeNode[], depth: number) => {
     for (const node of nodes) {
-      rows.push({ node, depth });
-      if (node.kind === "folder" && (filter || !closed.has(node.path)))
-        walk(node.children ?? [], depth + 1);
+      const open = node.kind === "folder" && isOpen(node);
+      rows.push({ node, depth, open });
+      if (open) walk(node.children ?? [], depth + 1);
     }
   };
-  walk(filterTree(tree, filter.trim()), 0);
+  walk(tree, 0);
 
   return (
     <aside className="sidebar">
-      <div className="sidebar-head">
-        <div className="eyebrow">Folder</div>
-        <div className="mono sidebar-root">{rootName}</div>
-        <div className="sidebar-path" title={rootPath}>
-          {rootPath}
-        </div>
-      </div>
-      <div className="filter">
-        <input
-          className="field"
-          placeholder="Filter videos"
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-        />
-        <SearchIcon className="filter-icon" />
-      </div>
+      <FolderPicker
+        rootName={props.rootName}
+        rootPath={props.rootPath}
+        recent={props.recent}
+        onBrowse={props.onBrowse}
+        onChoose={props.onChooseRoot}
+      />
       <div className="tree" role="tree">
-        {rows.length === 0 && <div className="tree-empty">No videos found</div>}
-        {rows.map(({ node, depth }) => {
+        {rows.map(({ node, depth, open }) => {
           const isFolder = node.kind === "folder";
           const isSelected = node.path === selected;
           return (
@@ -71,27 +87,71 @@ export function VideoTree({ rootName, rootPath, tree, selected, onSelect }: Prop
               role="treeitem"
               aria-selected={isSelected}
               data-path={node.path}
-              className={`tree-row${isSelected ? " selected" : ""}${isFolder ? " folder" : ""}`}
+              title={
+                node.mtime
+                  ? `Modified ${new Date(node.mtime).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}`
+                  : undefined
+              }
+              className={`tree-row${isSelected ? " selected" : ""}${isFolder ? " folder" : ""}${node.project ? " project" : ""}`}
               style={{ paddingLeft: 8 + depth * 18 }}
-              onClick={() => (isFolder ? toggle(node.path) : onSelect(node.path))}
+              onClick={() => {
+                if (!isFolder) return onSelect(node.path);
+                props.onSelectFolder(node.path);
+                toggle(node.path);
+              }}
+              onContextMenu={(e) => {
+                if (!isFolder) return;
+                e.preventDefault();
+                setMenu({ x: e.clientX, y: e.clientY, node });
+              }}
             >
               {isFolder ? (
                 <>
-                  <ChevronIcon
-                    className="tree-icon muted"
-                    open={filter !== "" || !closed.has(node.path)}
-                  />
+                  {node.children?.length ? (
+                    <ChevronIcon className="tree-icon muted" open={open} />
+                  ) : (
+                    <span className="tree-icon-space" />
+                  )}
                   <FolderIcon className="tree-icon muted" />
                 </>
               ) : (
                 <PlayIcon className="tree-icon accent" />
               )}
               <span className="tree-label">{node.name}</span>
-              {!!node.unresolved && <span className="count-badge">{node.unresolved}</span>}
+              {node.project && node.agentStatus && (
+                <AgentStatusBadge status={node.agentStatus} withLabel={false} />
+              )}
+              {(() => {
+                const count = isFolder
+                  ? open
+                    ? 0
+                    : unresolvedBelow(node)
+                  : (node.unresolved ?? 0);
+                return count > 0 && <span className="count-badge">{count}</span>;
+              })()}
             </div>
           );
         })}
       </div>
+      {menu && (
+        <div
+          className="context-menu"
+          role="menu"
+          style={{ left: menu.x, top: menu.y }}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <button
+            role="menuitem"
+            disabled={menu.node.project}
+            onClick={() => {
+              props.onMakeProject(menu.node.path);
+              setMenu(null);
+            }}
+          >
+            Make project here
+          </button>
+        </div>
+      )}
     </aside>
   );
 }

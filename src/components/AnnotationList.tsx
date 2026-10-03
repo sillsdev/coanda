@@ -14,16 +14,11 @@ interface Props {
   onReply: (a: Annotation, text: string) => Promise<void>;
   /** Open annotations across every video in the folder. */
   openTotal: number;
-  /** Open annotations on videos other than this one. */
-  openElsewhere: number;
-  /** Annotations sent to Claude and not yet answered, across the folder. */
-  sentTotal: number;
-  sendNote: string | null;
   onSend: () => void;
 }
 
 export function AnnotationList(props: Props) {
-  const { annotations, activeId, showResolved, openTotal, openElsewhere, sentTotal } = props;
+  const { annotations, activeId, showResolved, openTotal } = props;
   const [replyFor, setReplyFor] = useState<number | null>(null);
   const [replyText, setReplyText] = useState("");
   const replyRef = useRef<HTMLInputElement>(null);
@@ -50,10 +45,6 @@ export function AnnotationList(props: Props) {
     setReplyText("");
   };
 
-  let sendLabel = "Nothing new to send";
-  if (openTotal) sendLabel = `Send ${openTotal} open to Claude Code`;
-  else if (sentTotal) sendLabel = "Claude Code is working…";
-
   return (
     <section className="panel">
       <div className="panel-head">
@@ -68,11 +59,6 @@ export function AnnotationList(props: Props) {
         )}
       </div>
       <div className="cards">
-        {shown.length === 0 && (
-          <div className="cards-empty">
-            No annotations yet. Click or drag on the video to add one.
-          </div>
-        )}
         {shown.map((a) => {
           const isActive = a.id === activeId;
           const lastIsClaude = a.thread.at(-1)?.who === "claude";
@@ -125,7 +111,7 @@ export function AnnotationList(props: Props) {
               {a.status === "sent" && (
                 <div className="sent-note">
                   <span className="dot" />
-                  <span>Sent · Claude Code is working on it</span>
+                  <span>Sent</span>
                 </div>
               )}
               {replying && (
@@ -159,9 +145,6 @@ export function AnnotationList(props: Props) {
                     >
                       Reply
                     </button>
-                  )}
-                  {a.status === "open" && (
-                    <span className="dim small">Goes out with the next send</span>
                   )}
                   <button
                     className="btn btn-ghost-outline push-right resolve-btn"
@@ -198,12 +181,6 @@ export function AnnotationList(props: Props) {
         })}
       </div>
       <div className="panel-foot">
-        <span className="foot-note">
-          Each annotation is sent with its frame, timestamp, arrow and file path. Claude Code
-          replies here and re-renders the video.
-          {openElsewhere > 0 && ` Includes ${openElsewhere} on other videos.`}
-        </span>
-        {props.sendNote && <span className="foot-note warn">{props.sendNote}</span>}
         <button
           className="send-btn"
           data-testid="send"
@@ -211,7 +188,7 @@ export function AnnotationList(props: Props) {
           disabled={!openTotal}
         >
           <SendIcon />
-          {sendLabel}
+          {openTotal ? `Send ${openTotal}` : "Send"}
         </button>
       </div>
     </section>
