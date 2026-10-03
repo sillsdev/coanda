@@ -1,5 +1,5 @@
 import { expect, test } from "vite-plus/test";
-import { formatTime, initials, stem } from "./format.ts";
+import { formatTime, initials, modelName, stem } from "./format.ts";
 
 test("formatTime", () => {
   expect(formatTime(0)).toBe("0:00");
@@ -15,4 +15,10 @@ test("initials", () => {
 
 test("stem drops the extension", () => {
   expect(stem("welcome.webm")).toBe("welcome");
+});
+
+test("modelName shows family and version", () => {
+  expect(modelName("claude-opus-5-5")).toBe("Opus 5.5");
+  expect(modelName("claude-haiku-4-5-20251001")).toBe("Haiku 4.5");
+  expect(modelName("opus")).toBe("opus");
 });

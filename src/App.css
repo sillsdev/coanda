@@ -735,7 +735,8 @@
 
 .cards {
   flex: 1;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   min-height: 0;
   padding: 0 10px 10px;
   display: flex;
@@ -817,60 +818,6 @@
   user-select: text;
 }
 
-.msg {
-  display: flex;
-  gap: 9px;
-  padding: 9px 10px;
-  border-radius: 8px;
-  background: rgba(10, 18, 34, 0.6);
-}
-
-.msg.claude {
-  background: rgba(92, 149, 242, 0.12);
-}
-
-.claude-mark {
-  flex: none;
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
-  background: linear-gradient(135deg, var(--accent), #2b5fd6);
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--font-heading);
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.msg-body {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.msg-name {
-  font-size: 11.5px;
-  font-weight: 600;
-  color: var(--text-dim);
-}
-
-.msg.claude .msg-name {
-  color: var(--link);
-}
-
-.msg-body p {
-  margin: 0;
-  font-size: 13px;
-  line-height: 1.45;
-  text-wrap: pretty;
-  color: #d4e0f8;
-  user-select: text;
-  white-space: pre-wrap;
-}
-
 .sent-note {
   display: flex;
   align-items: center;
@@ -916,11 +863,32 @@
   padding: 14px 16px 16px;
   border-top: 1px solid var(--line);
   display: flex;
-  flex-direction: column;
-  gap: 10px;
+  align-items: center;
+  gap: 12px;
+}
+
+.plan-approval {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.plan-approval input {
+  accent-color: var(--accent-strong);
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  cursor: pointer;
 }
 
 .send-btn {
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -953,6 +921,10 @@
 }
 
 .toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  max-width: min(720px, calc(100vw - 32px));
   position: fixed;
   bottom: 20px;
   left: 50%;
@@ -988,7 +960,8 @@
 .agent-log {
   flex: 1;
   min-height: 0;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   padding: 0 14px 12px;
   display: flex;
   flex-direction: column;
@@ -1004,15 +977,6 @@
   color: #d4e0f8;
 }
 
-.agent-msg.user {
-  align-self: flex-end;
-  max-width: 85%;
-  padding: 8px 10px;
-  border-radius: 10px;
-  background: var(--card-active);
-  color: var(--text);
-}
-
 .agent-msg.tool {
   font: 11.5px/1.4 var(--font-mono);
   color: var(--text-faint);
@@ -1022,12 +986,19 @@
   color: #ff9aa8;
 }
 
+.agent-status {
+  display: flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 6px 14px 0;
+  border-top: 1px solid var(--line);
+}
+
 .agent-input {
   display: flex;
   gap: 8px;
   align-items: flex-end;
-  padding: 12px 14px 16px;
-  border-top: 1px solid var(--line);
+  padding: 6px 14px 10px;
 }
 
 .agent-input textarea {
@@ -1066,7 +1037,7 @@
 }
 
 .agent-badge.done .agent-dot {
-  background: #4cc38a;
+  background: var(--go);
 }
 
 .agent-badge.question .agent-dot {
@@ -1178,4 +1149,754 @@
 .context-menu button:disabled {
   color: var(--text-faint);
   cursor: default;
+}
+
+.agent-bloom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 18px 10px;
+  min-width: 0;
+}
+
+.agent-bloom-path {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  min-width: 0;
+}
+
+.meter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  padding: 0 14px 14px;
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+
+.meter-select {
+  padding: 4px 6px;
+  background: var(--bg);
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  color: var(--text);
+  font: 12px var(--font-body);
+  cursor: pointer;
+}
+
+.meter-item {
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
+.text-link {
+  color: inherit;
+  text-decoration: underline dotted rgba(143, 181, 248, 0.45);
+  text-underline-offset: 2px;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.text-link:hover {
+  color: var(--link);
+  text-decoration: underline solid;
+}
+
+.inline-code {
+  font: 0.92em var(--font-mono);
+  padding: 0 3px;
+  border-radius: 4px;
+  background: rgba(10, 18, 34, 0.6);
+}
+
+.meter-item.over {
+  color: #ff6b81;
+}
+
+.meter-context {
+  display: inline-flex;
+}
+
+/* Pointing at the context figure swaps it for the Compact button. */
+.meter-compact {
+  display: none;
+  padding: 1px 8px;
+  border: 1px solid var(--line-button);
+  border-radius: 6px;
+  background: var(--card-active);
+  color: var(--text);
+  font: 500 11.5px var(--font-body);
+  cursor: pointer;
+}
+
+.meter-compact:hover {
+  border-color: var(--accent);
+}
+
+.meter-context.can-compact:hover .meter-context-label {
+  display: none;
+}
+
+.meter-context.can-compact:hover .meter-compact {
+  display: inline-block;
+}
+
+/* Chat, in both the annotation cards and the Claude panel: the reviewer's words in bubbles on
+   the right, Claude's replies as plain text on the left. */
+
+.chat {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chat-human {
+  align-self: flex-end;
+  max-width: 85%;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--bubble);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.chat-ai {
+  align-self: flex-start;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #d4e0f8;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.reply-status {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-size: 10.5px;
+  font-weight: 600;
+  vertical-align: 1px;
+  background: rgba(245, 196, 106, 0.16);
+  color: #f5c46a;
+}
+
+.reply-status.voice {
+  background: rgba(92, 149, 242, 0.16);
+  color: #a9c6fb;
+}
+
+.voice-btn .count-badge {
+  margin-left: 2px;
+}
+
+/* Stretches of the render whose narration has no recording yet. */
+.track-unvoiced {
+  position: absolute;
+  top: 50%;
+  height: 10px;
+  margin-top: -5px;
+  border-radius: 2px;
+  background: repeating-linear-gradient(
+    135deg,
+    rgba(245, 196, 106, 0.85) 0 3px,
+    rgba(245, 196, 106, 0.25) 3px 6px
+  );
+  pointer-events: none;
+}
+
+.unvoiced-now {
+  position: absolute;
+  left: 50%;
+  bottom: 8%;
+  transform: translateX(-50%);
+  max-width: 80%;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px dashed rgba(245, 196, 106, 0.8);
+  background: rgba(10, 18, 34, 0.85);
+  color: #fbe3b0;
+  font-size: 14px;
+  line-height: 1.4;
+  text-align: center;
+  pointer-events: none;
+}
+
+.unvoiced-label {
+  display: block;
+  font: 600 10px var(--font-body);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #f5c46a;
+  margin-bottom: 2px;
+}
+
+.cut-tag {
+  flex: none;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-size: 10.5px;
+  font-weight: 600;
+  background: rgba(255, 107, 129, 0.14);
+  color: #ff9aa8;
+}
+
+.agent-badge.question .agent-dot {
+  width: 14px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #1a1408;
+  font: 700 10px var(--font-body);
+  line-height: 1;
+}
+
+/* Editing and deleting notes, and the images pasted into them */
+
+.mini-btn {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-dim);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.mini-btn:hover {
+  background: var(--card-active);
+  color: var(--text);
+}
+
+.card-delete {
+  opacity: 0;
+}
+
+.card:hover .card-delete,
+.card-delete:focus-visible {
+  opacity: 1;
+}
+
+.card-delete:hover {
+  color: #ff9aa8;
+}
+
+.chat-human {
+  position: relative;
+}
+
+.bubble-edit {
+  position: absolute;
+  left: -26px;
+  top: 3px;
+  opacity: 0;
+}
+
+.chat-human:hover .bubble-edit,
+.bubble-edit:focus-visible {
+  opacity: 1;
+}
+
+.note-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  cursor: default;
+}
+
+.note-editor textarea {
+  resize: vertical;
+  width: 100%;
+  font: inherit;
+  font-size: 13px;
+}
+
+.thumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.thumbs:first-child {
+  margin-top: 0;
+}
+
+.thumb {
+  position: relative;
+  display: inline-flex;
+}
+
+.thumb img {
+  max-width: 120px;
+  max-height: 80px;
+  border-radius: 6px;
+  border: 1px solid var(--line-strong);
+  object-fit: cover;
+}
+
+.thumb img.openable {
+  cursor: zoom-in;
+}
+
+.thumb-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--line-strong);
+  background: var(--popover);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* Claude's messages, written in Markdown */
+
+.md {
+  white-space: normal;
+}
+
+.md > :first-child {
+  margin-top: 0;
+}
+
+.md > :last-child {
+  margin-bottom: 0;
+}
+
+.md p,
+.md ul,
+.md ol,
+.md blockquote,
+.md pre,
+.md .md-table {
+  margin: 0 0 8px;
+}
+
+.md ul,
+.md ol {
+  padding-left: 20px;
+}
+
+.md li > p {
+  margin: 0;
+}
+
+.md-h {
+  margin: 12px 0 6px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.md-h1 {
+  font-size: 16px;
+}
+
+.md-h2 {
+  font-size: 15px;
+}
+
+.md-h3,
+.md-h4 {
+  font-size: 13.5px;
+}
+
+.md-code {
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--line);
+  font: 12px var(--font-mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.md blockquote {
+  padding-left: 10px;
+  border-left: 3px solid var(--line-strong);
+  color: var(--text-dim);
+}
+
+.md hr {
+  border: none;
+  border-top: 1px solid var(--line);
+  margin: 10px 0;
+}
+
+.md-table {
+  max-width: 100%;
+}
+
+.md table {
+  width: 100%;
+  border-collapse: collapse;
+  overflow-wrap: anywhere;
+  font-size: 12.5px;
+}
+
+.md th,
+.md td {
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.md th {
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.send-btn {
+  position: relative;
+  padding-right: 36px;
+  padding-left: 36px;
+}
+
+.send-arrow {
+  position: absolute;
+  right: 14px;
+}
+
+.tree-row.file {
+  color: var(--text-dim);
+  cursor: default;
+}
+
+/* Documents in the middle column */
+
+.doc-view {
+  min-height: 0;
+}
+
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--line-button);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.segmented button {
+  padding: 5px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--text-dim);
+  font: 500 12.5px var(--font-body);
+  cursor: pointer;
+}
+
+.segmented button + button {
+  border-left: 1px solid var(--line-button);
+}
+
+.segmented button.on {
+  background: var(--card-active);
+  color: var(--text);
+}
+
+.doc-conflict {
+  font-size: 12.5px;
+  color: #f5c46a;
+}
+
+.doc-page {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  /* Room on the right for the comment button beside a selection. */
+  padding: 8px 52px 40px 4px;
+}
+
+.doc-md {
+  max-width: 760px;
+  margin: 0 auto;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text-soft);
+  user-select: text;
+}
+
+.doc-md .md-h1 {
+  font: 600 26px var(--font-heading);
+  margin: 8px 0 14px;
+}
+
+.doc-md .md-h2 {
+  font: 600 20px var(--font-heading);
+  margin: 22px 0 10px;
+}
+
+.doc-md .md-h3,
+.doc-md .md-h4 {
+  font-size: 16px;
+  margin: 18px 0 8px;
+}
+
+.doc-md p,
+.doc-md ul,
+.doc-md ol {
+  margin-bottom: 12px;
+}
+
+.md-image {
+  display: block;
+  max-width: 100%;
+  margin: 10px 0;
+  border-radius: 8px;
+  border: 1px solid var(--line-strong);
+}
+
+::highlight(coanda-comment) {
+  background-color: rgba(245, 196, 106, 0.22);
+}
+
+::highlight(coanda-comment-active) {
+  background-color: rgba(245, 196, 106, 0.5);
+  color: #fff;
+}
+
+.doc-comment-btn {
+  position: absolute;
+  z-index: 4;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--go-strong);
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+}
+
+.doc-comment-btn:hover {
+  background: var(--go);
+}
+
+.doc-draft {
+  width: 300px;
+}
+
+.doc-draft textarea {
+  width: 100%;
+  min-width: 0;
+  resize: vertical;
+}
+
+.doc-editor {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  resize: none;
+  padding: 14px 16px;
+  font: 13.5px/1.6 var(--font-mono);
+}
+
+.card-quote {
+  margin: 0;
+  padding: 2px 0 2px 10px;
+  border-left: 3px solid rgba(245, 196, 106, 0.6);
+  color: var(--text-dim);
+  font-size: 12.5px;
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.agent-panel > .thumbs {
+  padding: 0 16px 8px;
+}
+
+.send-btn {
+  white-space: nowrap;
+  padding-left: 14px;
+  padding-right: 34px;
+}
+
+.agent-status .elapsed {
+  margin-left: 6px;
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+
+/* A project's page: its planning documents */
+
+.project-home {
+  overflow-y: auto;
+}
+
+.project-home-title {
+  margin: 8px 0 4px;
+  font: 600 24px var(--font-heading);
+}
+
+.steps {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  max-width: 640px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.step {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+}
+
+.step-num {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--line-strong);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  flex: none;
+}
+
+.step-num {
+  background: var(--go-strong);
+  color: #fff;
+}
+
+.step.step-todo .step-num {
+  background: transparent;
+  border: 1.5px solid var(--go);
+  color: var(--go);
+}
+
+.step-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.step-state {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.step.step-changed .step-state {
+  color: #f5c46a;
+}
+
+.approve-btn {
+  border: 1px solid var(--line-button);
+  background: transparent;
+  color: var(--text-dim);
+}
+
+.approve-btn.on {
+  border-color: transparent;
+  background: var(--go-strong);
+  color: #fff;
+}
+
+.tree-step {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--go-strong);
+  color: #fff;
+  font: 700 11px var(--font-body);
+}
+
+.tree-row.planning .tree-label {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.toast-close {
+  flex: none;
+  margin: -4px -6px -4px 0;
+  padding: 0 6px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.8;
+}
+
+.toast-close:hover {
+  opacity: 1;
+}
+
+/* Claude's questions in the annotations list */
+
+.question-card {
+  background: rgba(63, 191, 134, 0.14);
+  border-color: rgba(63, 191, 134, 0.45);
+  cursor: default;
+}
+
+.question-card:hover {
+  border-color: var(--go);
+}
+
+.question-card .chat-human {
+  background: var(--go-strong);
+}
+
+.question-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.question-option {
+  border: 1px solid var(--go);
+  background: transparent;
+  color: var(--text);
+}
+
+.question-option:hover {
+  background: var(--go-strong);
+}
+
+.tree-chevron {
+  display: inline-flex;
+  flex: none;
 }

@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
+  AgentQuestion,
   AgentState,
   Annotation,
   ClaudeAuth,
+  PlanningStep,
+  ProjectSettings,
   ServerInfo,
   TreeNode,
   VideoInfo,
@@ -10,12 +13,14 @@ import type {
 import { api, mediaUrl, subscribe, subtitleUrl } from "./api.ts";
 import { AgentPanel } from "./components/AgentPanel.tsx";
 import { AnnotationList } from "./components/AnnotationList.tsx";
+import { DocView, type DocViewHandle } from "./components/DocView.tsx";
 import { Header } from "./components/Header.tsx";
 import { Player, type PlayerHandle } from "./components/Player.tsx";
+import { ProjectHome } from "./components/ProjectHome.tsx";
 import { Settings } from "./components/Settings.tsx";
 import { Splitter } from "./components/Splitter.tsx";
 import { VideoTree } from "./components/VideoTree.tsx";
-import { findNode } from "./format.ts";
+import { findNode, isDocument } from "./format.ts";
 import "./App.css";
 
 function videoFromHash(): string | undefined {
@@ -53,9 +58,10 @@ function useSidebarWidth(side: keyof typeof SIDEBARS) {
   return [width, resize] as const;
 }
 
+/** A count over every video and document in the tree. */
 function sumVideos(nodes: TreeNode[], pick: (n: TreeNode) => number): number {
   return nodes.reduce(
-    (sum, n) => sum + (n.kind === "video" ? pick(n) : sumVideos(n.children ?? [], pick)),
+    (sum, n) => sum + (n.kind === "folder" ? sumVideos(n.children ?? [], pick) : pick(n)),
     0,
   );
 }
@@ -77,6 +83,13 @@ function App() {
       return false;
     }
   });
+  const [planApproval, setPlanApproval] = useState(() => {
+    try {
+      return localStorage.getItem("coanda.planApproval") === "on";
+    } catch {
+      return false;
+    }
+  });
   const [leftWidth, setLeftWidth] = useSidebarWidth("left");
   const [rightWidth, setRightWidth] = useSidebarWidth("right");
   const [agentWidth, setAgentWidth] = useSidebarWidth("agent");
@@ -85,6 +98,8 @@ function App() {
   /** A folder clicked in the tree; the Claude panel follows it until a video is chosen. */
   const [selectedFolder, setSelectedFolder] = useState<string | undefined>(undefined);
   const [agent, setAgent] = useState<AgentState | null>(null);
+  const [settings, setSettings] = useState<ProjectSettings>({});
+  const bloom = settings.bloom ?? null;
   const [auth, setAuth] = useState<ClaudeAuth | null>(null);
   const [keySaved, setKeySaved] = useState(false);
   const projectRef = useRef(project);
@@ -92,6 +107,13 @@ function App() {
     projectRef.current = project;
   }, [project]);
   const playerRef = useRef<PlayerHandle>(null);
+  const docRef = useRef<DocViewHandle>(null);
+  /** Counts changes on disk to the open document, so it reloads. */
+  const [docVersion, setDocVersion] = useState(0);
+  /** The project's planning documents. */
+  const [steps, setSteps] = useState<PlanningStep[]>([]);
+  /** Claude's questions to the reviewer in this project. */
+  const [projectQuestions, setQuestions] = useState<AgentQuestion[]>([]);
   const videoRef = useRef(video);
   useEffect(() => {
     videoRef.current = video;
@@ -136,9 +158,30 @@ function App() {
     if (info?.root) void loadProject(scope);
   }, [scope, info?.root, loadProject]);
 
+  const loadQuestions = useCallback(async (folder: string) => {
+    const list = await api.questions(folder).catch(() => []);
+    if (projectRef.current === folder) setQuestions(list);
+  }, []);
+  useEffect(() => {
+    if (project != null) void loadQuestions(project);
+  }, [project, loadQuestions]);
+
+  const loadSteps = useCallback(async (folder: string) => {
+    const list = await api.planning(folder).catch(() => []);
+    if (projectRef.current === folder) setSteps(list);
+  }, []);
+  useEffect(() => {
+    if (project != null) void loadSteps(project);
+  }, [project, loadSteps]);
+
   const loadAgent = useCallback(async (folder: string) => {
-    const state = await api.agent(folder);
-    if (projectRef.current === folder) setAgent(state);
+    const [state, settings] = await Promise.all([
+      api.agent(folder),
+      api.projectSettings(folder).catch(() => ({})),
+    ]);
+    if (projectRef.current !== folder) return;
+    setAgent(state);
+    setSettings(settings);
   }, []);
 
   useEffect(() => {
@@ -154,20 +197,37 @@ function App() {
   }, [showFolder]);
 
   useEffect(() => {
-    return subscribe((e) => {
-      if (e.type === "root") {
+    return subscribe(
+      (e) => {
+        if (e.type === "root") {
+          void api.info().then(showFolder);
+          void api.tree().then(setTree);
+        }
+        if (e.type === "tree") {
+          void api.tree().then(setTree);
+          void loadProject(scopeRef.current);
+          if (projectRef.current != null) void loadSteps(projectRef.current);
+        }
+        if (e.type === "annotations" && e.video === videoRef.current) void loadAnnotations(e.video);
+        if (e.type === "video-changed" && e.video === videoRef.current) setRenderedAt(Date.now());
+        if (e.type === "doc-changed" && e.path === videoRef.current) setDocVersion((v) => v + 1);
+        if (e.type === "agent" && e.project === projectRef.current) void loadAgent(e.project);
+        if (e.type === "questions" && e.project === projectRef.current) {
+          void loadQuestions(e.project);
+        }
+      },
+      () => {
+        // Connected, or reconnected after the server restarted: show what it has now.
         void api.info().then(showFolder);
         void api.tree().then(setTree);
-      }
-      if (e.type === "tree") {
-        void api.tree().then(setTree);
-        void loadProject(scopeRef.current);
-      }
-      if (e.type === "annotations" && e.video === videoRef.current) void loadAnnotations(e.video);
-      if (e.type === "video-changed" && e.video === videoRef.current) setRenderedAt(Date.now());
-      if (e.type === "agent" && e.project === projectRef.current) void loadAgent(e.project);
-    });
-  }, [loadAnnotations, showFolder, loadAgent, loadProject]);
+        if (videoRef.current) void loadAnnotations(videoRef.current);
+        if (projectRef.current != null) {
+          void loadAgent(projectRef.current);
+          void loadQuestions(projectRef.current);
+        }
+      },
+    );
+  }, [loadAnnotations, showFolder, loadAgent, loadProject, loadSteps, loadQuestions]);
 
   useEffect(() => {
     if (!video) return;
@@ -176,12 +236,13 @@ function App() {
   }, [video, loadAnnotations]);
 
   const chooseVideo = (path: string) => {
+    // Choosing it again brings it back in front of a folder's page.
+    setSelectedFolder(undefined);
     if (path === video) return;
     setAnnotations([]);
     setVideoInfo(null);
     setActiveId(null);
     setRenderedAt(null);
-    setSelectedFolder(undefined);
     setAgent(null);
     setVideo(path);
   };
@@ -189,7 +250,11 @@ function App() {
   const node = video ? findNode(tree, video) : undefined;
   // Send covers the selected video's project when it has one, else the whole folder.
   const projectNode = project ? findNode(tree, project) : undefined;
-  const openTotal = sumVideos(projectNode ? [projectNode] : tree, (n) => n.open ?? 0);
+  const questions = project == null ? [] : projectQuestions;
+  // What Send sends: open notes, and answers to Claude's questions not yet sent.
+  const openTotal =
+    sumVideos(projectNode ? [projectNode] : tree, (n) => n.open ?? 0) +
+    questions.filter((q) => q.answer && !q.sent).length;
   const makeProject = async (folder: string) => {
     await api.makeProject(folder);
     setSelectedFolder(folder);
@@ -206,10 +271,32 @@ function App() {
 
   const select = (a: Annotation) => {
     setActiveId(a.id);
-    playerRef.current?.seek(a.t);
+    if (a.kind === "text") docRef.current?.reveal(a);
+    else playerRef.current?.seek(a.t);
   };
 
   const run = (p: Promise<unknown>) => p.catch((e: Error) => setError(e.message));
+
+  /** Starts a planning document from its template and opens it; Claude begins on it. */
+  const startStep = (step: PlanningStep) => {
+    if (project == null) return;
+    void run(
+      api.startPlanning(project, step.key).then(async ({ path }) => {
+        setTree(await api.tree());
+        chooseVideo(path);
+        void loadSteps(project);
+        void loadAgent(project);
+      }),
+    );
+  };
+  const showError = useCallback((message: string) => setError(message), []);
+  // An error goes away by itself after a while.
+  useEffect(() => {
+    if (!error || !info) return;
+    const timer = setTimeout(() => setError(null), 8000);
+    return () => clearTimeout(timer);
+  }, [error, info]);
+  const openPath = (path: string) => void run(api.openPath(path, project));
 
   if (error && !info)
     return <div className="fatal">Could not reach the Coanda server: {error}</div>;
@@ -258,8 +345,47 @@ function App() {
           onSelect={chooseVideo}
           onSelectFolder={setSelectedFolder}
           onMakeProject={(folder) => void run(makeProject(folder))}
+          onReveal={(path) => void run(api.reveal(path))}
+          onOpen={openPath}
         />
-        {video && node ? (
+        {project != null && selectedFolder === project ? (
+          <ProjectHome
+            project={project || info.rootName}
+            steps={steps}
+            onOpen={(step) => chooseVideo(step.path)}
+            onStart={startStep}
+          />
+        ) : video && node && isDocument(video) ? (
+          <DocView
+            key={video}
+            path={video}
+            version={docVersion}
+            annotations={annotations}
+            activeId={activeId}
+            showResolved={showResolved}
+            me={info.user}
+            ref={docRef}
+            onSelect={select}
+            onDeselect={() => setActiveId(null)}
+            onCreate={async (draft) => {
+              const created = await api.create(video, draft);
+              setAnnotations((list) => [...list.filter((a) => a.id !== created.id), created]);
+              setActiveId(created.id);
+            }}
+            onOpenPath={openPath}
+            onError={showError}
+            step={steps.find((s) => s.path === video)}
+            nextStep={steps[steps.findIndex((s) => s.path === video) + 1]}
+            onNextStep={(next) => (next.exists ? chooseVideo(next.path) : startStep(next))}
+            onApprove={(approved) =>
+              void run(
+                api.approve(video, approved).then(async () => {
+                  if (project != null) await loadSteps(project);
+                }),
+              )
+            }
+          />
+        ) : video && node ? (
           <Player
             key={video}
             video={video}
@@ -270,12 +396,12 @@ function App() {
             me={info.user}
             ref={playerRef}
             renderedAt={renderedAt}
-            voiceReady={videoInfo?.voiceReady ?? false}
-            onToggleVoice={() => {
-              const next = !(videoInfo?.voiceReady ?? false);
-              setVideoInfo((v) => (v ? { ...v, voiceReady: next } : v));
-              void run(api.setVoiceReady(video, next));
-            }}
+            unvoiced={videoInfo?.unvoiced ?? []}
+            onVoicePass={
+              project != null
+                ? () => void run(api.voicePass(project, video).then(setAgent))
+                : undefined
+            }
             subtitles={(videoInfo?.subtitles ?? []).map(subtitleUrl)}
             showSubtitles={showSubtitles}
             onToggleSubtitles={() => {
@@ -306,13 +432,34 @@ function App() {
           onSelect={select}
           onResolve={(a) => void run(api.resolve(video!, a.id).then(setAnnotations))}
           onReopen={(a) => void run(api.reopen(video!, a.id).then(setAnnotations))}
-          onReply={async (a, text) => {
-            await run(api.reply(video!, a.id, text).then(setAnnotations));
+          onReply={async (a, text, images) => {
+            await run(api.reply(video!, a.id, text, images).then(setAnnotations));
+          }}
+          onEdit={async (a, change) => {
+            await run(api.edit(video!, a.id, change).then(setAnnotations));
+          }}
+          onDelete={(a) => {
+            if (activeId === a.id) setActiveId(null);
+            void run(api.remove(video!, a.id).then(setAnnotations));
           }}
           openTotal={openTotal}
+          onOpenPath={openPath}
+          questions={questions}
+          onAnswer={(q, text) =>
+            project != null && void run(api.answer(project, q.id, text).then(setQuestions))
+          }
+          planApproval={planApproval}
+          onPlanApproval={(on) => {
+            setPlanApproval(on);
+            try {
+              localStorage.setItem("coanda.planApproval", on ? "on" : "off");
+            } catch {
+              // Storage unavailable: the choice still applies to this page.
+            }
+          }}
           onSend={() =>
             void run(
-              api.send(project).then(() => {
+              api.send(project, planApproval).then(() => {
                 if (video) void loadAnnotations(video);
                 void api.tree().then(setTree);
               }),
@@ -322,13 +469,34 @@ function App() {
         <AgentPanel
           project={project}
           onMakeProject={() => void run(makeProject(scope))}
+          bloom={bloom}
+          model={settings.model ?? ""}
+          effort={settings.effort ?? ""}
+          onModel={(model) =>
+            project != null &&
+            void run(api.setProjectSettings(project, { model }).then(setSettings))
+          }
+          onEffort={(effort) =>
+            project != null &&
+            void run(api.setProjectSettings(project, { effort }).then(setSettings))
+          }
+          onChooseBloom={() =>
+            project != null &&
+            void run(
+              api
+                .chooseBloom(project)
+                .then((r) => setSettings((s) => ({ ...s, bloom: r.bloom ?? undefined }))),
+            )
+          }
           state={agent}
           auth={auth}
-          onMessage={async (text) => {
+          onMessage={async (text, images) => {
             if (project == null) return;
-            await run(api.agentMessage(project, text).then(setAgent));
+            await run(api.agentMessage(project, text, images).then(setAgent));
           }}
           onStop={() => project != null && void run(api.agentStop(project).then(setAgent))}
+          onOpenPath={openPath}
+          onCompact={() => project != null && void run(api.agentCompact(project).then(setAgent))}
           onLogin={() => {
             void run(api.claudeLogin());
             // Check again once the browser sign-in has had time to finish.
@@ -337,8 +505,11 @@ function App() {
         />
       </div>
       {error && (
-        <div className="toast" onClick={() => setError(null)}>
-          {error}
+        <div className="toast" role="alert" data-testid="toast">
+          <span>{error}</span>
+          <button className="toast-close" aria-label="Close" onClick={() => setError(null)}>
+            ×
+          </button>
         </div>
       )}
     </div>

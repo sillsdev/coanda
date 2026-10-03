@@ -2,6 +2,7 @@
 // `coanda reply` reach over the same port.
 import { execFileSync, spawn } from "node:child_process";
 import {
+  copyFileSync,
   createReadStream,
   existsSync,
   mkdirSync,
@@ -12,25 +13,35 @@ import {
   type FSWatcher,
 } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { homedir, userInfo } from "node:os";
-import { dirname, extname, join, resolve } from "node:path";
+import { userInfo } from "node:os";
+import { dirname, extname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { PLANNING_STEPS } from "../shared/types.ts";
 import type {
   Annotation,
   ServerEvent,
   ServerInfo,
   ServerStatus,
   ClaudeAuth,
+  ReplyStatus,
   SentAnnotation,
+  AgentQuestion,
+  TextQuote,
+  TimeSegment,
   TreeNode,
   VideoInfo,
 } from "../shared/types.ts";
 import { defaultConfigFile, loadConfig, saveConfig, withRoot } from "./config.ts";
 import { AgentManager } from "./agents.ts";
+import { osOpen, osReveal } from "./osOpen.ts";
+import { mapFromTimelines, mapTime } from "./timeMap.ts";
 import { pickFolder } from "./pickFolder.ts";
-import { isVideoFile, Store } from "./store.ts";
+import { bloomLaunch, ProjectSettingsStore } from "./projectSettings.ts";
+import { isDocument, isVideoFile, PROJECT_FILE, Store } from "./store.ts";
 
 const DIST = resolve(dirname(fileURLToPath(import.meta.url)), "..", "dist");
+/** Coanda's templates for planning documents. */
+const TEMPLATES = resolve(dirname(fileURLToPath(import.meta.url)), "..", "agent", "templates");
 
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -38,6 +49,9 @@ const MIME: Record<string, string> = {
   ".css": "text/css",
   ".svg": "image/svg+xml",
   ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
   ".json": "application/json",
   ".mp4": "video/mp4",
   ".m4v": "video/mp4",
@@ -71,7 +85,7 @@ export interface ServeOptions {
   claudeCommand?: string[];
   /** Where Claude session IDs and transcripts are kept. Defaults to beside the config file. */
   sessionsFile?: string;
-  /** Where the ElevenLabs API key is saved. */
+  /** Where the ElevenLabs API key is saved. Defaults to beside the config file. */
   elevenLabsKeyFile?: string;
 }
 
@@ -84,7 +98,8 @@ export function serve(
   let watcher: FSWatcher | null = null;
   let agents: AgentManager | null = null;
   const claudeCommand = opts.claudeCommand ?? ["claude"];
-  const keyFile = opts.elevenLabsKeyFile ?? defaultElevenLabsKeyFile();
+  const keyFile = opts.elevenLabsKeyFile ?? join(dirname(configFile), "elevenlabs_key.txt");
+  const projectSettings = new ProjectSettingsStore(join(dirname(configFile), "projects.json"));
   const info: ServerInfo = { root: null, rootName: "", user: opts.user ?? "", recent: [] };
 
   /** The current folder's store; an error when no folder has been chosen yet. */
@@ -117,7 +132,7 @@ export function serve(
   const undelivered = (): SentAnnotation[] => {
     const out: SentAnnotation[] = [];
     if (!store) return out;
-    for (const { video, annotations, voiceReady } of store.allAnnotated()) {
+    for (const { video, annotations } of store.allAnnotated()) {
       for (const a of annotations) {
         if (a.status !== "sent" || delivered.has(`${video}#${a.id}`)) continue;
         out.push({
@@ -125,7 +140,6 @@ export function serve(
           video,
           videoFile: store!.resolvePath(video),
           frameFile: a.frame ? store!.resolvePath(a.frame) : undefined,
-          voiceReady: voiceReady ?? false,
         });
       }
     }
@@ -142,12 +156,51 @@ export function serve(
     emit({ type: "status" });
   };
 
+  /** Moves a video's notes from the timeline they're on to the new render's timeline. */
+  const followTimelines = (video: string) => {
+    const store = need();
+    const base = store.readTimeline(store.timelineBasePath(video));
+    const now = store.readTimeline(store.timelinePath(video));
+    if (!base || !now) return;
+    const segments = mapFromTimelines(base, now);
+    if (segments.length) moveAnnotations(store, video, segments);
+    store.setTimelineBase(video);
+    emit({ type: "annotations", video });
+  };
+
+  // `coanda voice` writes `<name>.voice.json` last, after the video and its timeline. Each one
+  // brings the render's unvoiced lines and moves the notes. The watcher reports a write several
+  // times, so wait for it to settle.
+  const voiceReportTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  const onVoiceReport = (rel: string) => {
+    clearTimeout(voiceReportTimers.get(rel));
+    voiceReportTimers.set(
+      rel,
+      setTimeout(() => {
+        voiceReportTimers.delete(rel);
+        const store = need();
+        const video = store.videoForReport(rel);
+        const report = video && store.readVoiceReport(rel);
+        if (!video || !report) return;
+        store.update(video, (data) => {
+          data.unvoiced = report.unvoiced;
+        });
+        followTimelines(video);
+      }, 500),
+    );
+  };
+
   const onFileChange = (filename: string | null) => {
     if (!filename) return;
     const rel = filename.split("\\").join("/");
     if (rel.split("/").some((part) => part.startsWith("."))) return;
-    if (rel.endsWith(".coanda.json")) {
+    if (rel.endsWith(".voice.json")) {
+      onVoiceReport(rel);
+    } else if (rel.endsWith(".coanda.json")) {
       emit({ type: "annotations", video: rel.slice(0, -".coanda.json".length) });
+      emit({ type: "tree" });
+    } else if (isDocument(rel)) {
+      emit({ type: "doc-changed", path: rel });
       emit({ type: "tree" });
     } else if (isVideoFile(rel)) {
       emit({ type: "video-changed", video: rel });
@@ -176,6 +229,42 @@ export function serve(
         emit({ type: "tree" });
       },
       onReply: (video, id, text) => claudeReply(video, id, text),
+      onTimeMap: (video, segments) => {
+        moveAnnotations(need(), video, segments);
+        need().setTimelineBase(video);
+        emit({ type: "annotations", video });
+      },
+      onRenderedWithoutMap: (video) => followTimelines(video),
+      onQuestions: (project, asked) => {
+        need().updateQuestions(project, (list) => {
+          let id = list.reduce((max, q) => Math.max(max, q.id), 0);
+          for (const q of asked) {
+            list.push({ id: ++id, ...q, askedAt: new Date().toISOString() });
+          }
+        });
+        emit({ type: "questions", project });
+      },
+      onUnvoiced: (video, lines) => {
+        need().update(video, (data) => {
+          data.unvoiced = lines;
+        });
+        emit({ type: "annotations", video });
+      },
+      launch: (project) => {
+        const dir = need().resolvePath(project);
+        const { bloom, model, effort } = projectSettings.get(dir);
+        const launch = bloom ? bloomLaunch(bloom) : {};
+        launch.args = [
+          ...(launch.args ?? []),
+          ...(model ? ["--model", model] : []),
+          ...(effort ? ["--effort", effort] : []),
+        ];
+        // The ElevenLabs key, for tools that make voice-over.
+        if (existsSync(keyFile)) {
+          launch.env = { ...launch.env, ELEVENLABS_API_KEY: readFileSync(keyFile, "utf8").trim() };
+        }
+        return launch;
+      },
     });
     config = withRoot(config, full);
     saveConfig(configFile, config);
@@ -208,10 +297,27 @@ export function serve(
     emit({ type: "tree" });
   };
 
-  const claudeReply = (video: string, id: number, text: string) =>
+  const claudeReply = (
+    video: string,
+    id: number,
+    reply: { text: string; status?: string; t?: number },
+  ) =>
     findAnnotation(video, id, (a) => {
-      a.thread.push({ who: "claude", text: text.trim(), at: new Date().toISOString() });
+      const status = ["partial", "voice", "question"].includes(reply.status ?? "")
+        ? (reply.status as ReplyStatus)
+        : undefined;
+      a.thread.push({
+        who: "claude",
+        text: reply.text.trim(),
+        at: new Date().toISOString(),
+        ...(status ? { replyStatus: status } : {}),
+      });
       a.status = "replied";
+      // A re-cut moved the note's moment: follow it into the new render.
+      if (typeof reply.t === "number" && Number.isFinite(reply.t) && reply.t >= 0) {
+        a.tOriginal ??= a.t;
+        a.t = reply.t;
+      }
     });
 
   /** The tree, with each project folder's Claude session status. */
@@ -260,6 +366,75 @@ export function serve(
 
     const project = url.searchParams.get("project");
 
+    if (path === "/api/questions" && method === "GET") {
+      if (project === null) throw new HttpError(400, "Give a project");
+      return json(res, 200, need().questions(project));
+    }
+
+    const answer = path.match(/^\/api\/questions\/(\d+)\/answer$/);
+    if (answer && method === "POST") {
+      if (project === null) throw new HttpError(400, "Give a project");
+      const body = (await readJson(req)) as { text?: string };
+      const id = Number(answer[1]);
+      const list = need().updateQuestions(project, (all) => {
+        const q = all.find((x) => x.id === id);
+        if (!q) throw new HttpError(404, `No question ${id}`);
+        if (q.sent) throw new HttpError(400, "That answer has already gone to Claude");
+        if (body.text?.trim()) {
+          q.answer = { text: body.text.trim(), by: info.user, at: new Date().toISOString() };
+        } else delete q.answer;
+      });
+      emit({ type: "questions", project });
+      return json(res, 200, list);
+    }
+
+    if (path === "/api/planning" && method === "GET") {
+      if (project === null) throw new HttpError(400, "Give a project");
+      return json(res, 200, need().planningSteps(project));
+    }
+
+    if (path === "/api/planning/start" && method === "POST") {
+      if (project === null) throw new HttpError(400, "Give a project");
+      const key = url.searchParams.get("step") ?? "";
+      const template = readFileSync(join(TEMPLATES, `${key}.md`), "utf8");
+      const doc = need().startPlanningStep(project, key, template);
+      emit({ type: "tree" });
+      // Claude takes it from there, as its guidance says for this step.
+      if (agents) {
+        const title = PLANNING_STEPS.find((s) => s.key === key)?.title ?? key;
+        agents.send(
+          project,
+          `[Coanda] The reviewer has started the ${title.toLowerCase()}: ${doc}. Work on it with ` +
+            `them as your guidance says for the ${title.toLowerCase()}.`,
+          `Started the ${title.toLowerCase()}`,
+        );
+      }
+      return json(res, 200, { path: doc });
+    }
+
+    if (path === "/api/approve" && method === "POST") {
+      if (!isDocument(video)) throw new HttpError(400, `Not a document: ${video}`);
+      const body = (await readJson(req)) as { approved?: boolean };
+      const store = need();
+      store.approve(video, body.approved ? info.user : null);
+      emit({ type: "annotations", video });
+      emit({ type: "tree" });
+      // Claude hears about it, as it would from a colleague.
+      const owner = store.projectFor(video);
+      const step = PLANNING_STEPS.find((s) => video.endsWith(`/${s.file}`) || video === s.file);
+      if (agents && owner !== null && step) {
+        const what = step.title.toLowerCase();
+        agents.send(
+          owner,
+          body.approved
+            ? `[Coanda] The reviewer approved the ${what} (${video}), as it is now.`
+            : `[Coanda] The reviewer withdrew their approval of the ${what} (${video}).`,
+          body.approved ? `Approved the ${what}` : `Withdrew approval of the ${what}`,
+        );
+      }
+      return json(res, 200, { ok: true });
+    }
+
     if (path === "/api/agent" && method === "GET") {
       if (project === null || !agents) throw new HttpError(400, "Give a project");
       return json(res, 200, agents.state(project));
@@ -267,9 +442,64 @@ export function serve(
 
     if (path === "/api/agent/message" && method === "POST") {
       if (project === null || !agents) throw new HttpError(400, "Give a project");
-      const body = (await readJson(req)) as { text?: string };
-      if (!body.text?.trim()) throw new HttpError(400, "A message needs text");
-      agents.send(project, body.text.trim());
+      const body = (await readJson(req)) as { text?: string; images?: string[] };
+      const text = body.text?.trim() ?? "";
+      const images = savePasted(body.images, (image, ext) =>
+        need().saveChatImage(project, image, ext),
+      );
+      if (!text && !images.length) throw new HttpError(400, "A message needs text");
+      // Claude reads the images from their paths, listed after the words.
+      const withImages = images.length
+        ? `${text}
+
+[Images the reviewer pasted in: ${images.map((i) => need().resolvePath(i)).join(", ")}]`
+        : text;
+      agents.send(project, withImages, text, images);
+      return json(res, 200, agents.state(project));
+    }
+
+    if (path === "/api/project-settings" && method === "GET") {
+      if (project === null) throw new HttpError(400, "Give a project");
+      return json(res, 200, projectSettings.get(need().resolvePath(project)));
+    }
+
+    if (path === "/api/project-settings" && method === "POST") {
+      if (project === null || !agents) throw new HttpError(400, "Give a project");
+      const dir = need().resolvePath(project);
+      const body = (await readJson(req)) as { model?: string; effort?: string };
+      const next = { ...projectSettings.get(dir) };
+      // An empty string means Claude Code's default.
+      if ("model" in body) next.model = body.model || undefined;
+      if ("effort" in body) next.effort = body.effort || undefined;
+      projectSettings.set(dir, next);
+      // The next message starts the session again, resumed, with the new model or effort.
+      agents.restartWhenIdle(project);
+      emit({ type: "agent", project });
+      return json(res, 200, next);
+    }
+
+    if (path === "/api/project-bloom" && method === "POST") {
+      if (project === null || !agents) throw new HttpError(400, "Give a project");
+      const dir = need().resolvePath(project);
+      const body = (await readJson(req)) as { path?: string };
+      const current = projectSettings.get(dir).bloom;
+      const chosen = body.path ?? (await (opts.pickFolder ?? pickFolder)(current));
+      if (!chosen) return json(res, 200, { bloom: current ?? null });
+      const full = resolve(chosen);
+      if (!existsSync(full) || !statSync(full).isDirectory()) {
+        throw new HttpError(400, `Not a folder: ${chosen}`);
+      }
+      projectSettings.set(dir, { ...projectSettings.get(dir), bloom: full });
+      // The next message starts the session with the new worktree.
+      agents.restartWhenIdle(project);
+      emit({ type: "agent", project });
+      return json(res, 200, { bloom: full });
+    }
+
+    if (path === "/api/agent/compact" && method === "POST") {
+      if (project === null || !agents) throw new HttpError(400, "Give a project");
+      // Claude Code's own /compact, sent as a message, summarises the conversation so far.
+      agents.send(project, "/compact", "Compact");
       return json(res, 200, agents.state(project));
     }
 
@@ -277,6 +507,33 @@ export function serve(
       if (project === null || !agents) throw new HttpError(400, "Give a project");
       agents.stop(project);
       return json(res, 200, agents.state(project));
+    }
+
+    if (path === "/api/reveal" && method === "POST") {
+      const body = (await readJson(req)) as { path?: string };
+      const full = need().resolvePath(body.path ?? "");
+      if (!existsSync(full)) throw new HttpError(404, `Not found: ${body.path}`);
+      osReveal(full);
+      return json(res, 200, { path: full });
+    }
+
+    if (path === "/api/open" && method === "POST") {
+      // Opens a path mentioned in a message. A relative path is tried against the reviewed
+      // folder, the project folder, and the project's Bloom worktree, in that order.
+      const body = (await readJson(req)) as { path?: string };
+      const target = body.path?.trim();
+      if (!target) throw new HttpError(400, "Give a path");
+      const bases = [need().root];
+      if (project !== null) {
+        const dir = need().resolvePath(project);
+        bases.push(dir);
+        const { bloom } = projectSettings.get(dir);
+        if (bloom) bases.push(bloom);
+      }
+      const candidates = isAbsolute(target) ? [target] : bases.map((b) => resolve(b, target));
+      const found = candidates.find((c) => existsSync(c));
+      if (!found) throw new HttpError(404, `Not found: ${target}`);
+      return json(res, 200, { path: found, how: osOpen(found) });
     }
 
     if (path === "/api/claude-auth" && method === "GET") {
@@ -327,32 +584,68 @@ export function serve(
       return;
     }
 
+    if (path === "/api/doc" && method === "GET") {
+      if (!isDocument(video)) throw new HttpError(400, `Not a document: ${video}`);
+      const doc = need().readDoc(video);
+      if (!doc) throw new HttpError(404, `No document ${video}`);
+      return json(res, 200, doc);
+    }
+
+    if (path === "/api/doc" && method === "POST") {
+      if (!isDocument(video)) throw new HttpError(400, `Not a document: ${video}`);
+      const body = (await readJson(req)) as { text?: string; baseMtime?: number };
+      if (typeof body.text !== "string") throw new HttpError(400, "Give the document's text");
+      const saved = need().writeDoc(video, body.text, Number(body.baseMtime));
+      if (!saved) throw new HttpError(409, "The document changed on disk since it was opened");
+      return json(res, 200, saved);
+    }
+
+    if (path === "/api/doc/image" && method === "POST") {
+      if (!isDocument(video)) throw new HttpError(400, `Not a document: ${video}`);
+      const body = (await readJson(req)) as { image?: string };
+      const [saved] = savePasted([body.image], (image, ext) =>
+        need().saveDocImage(video, image, ext),
+      );
+      if (!saved) throw new HttpError(400, "Not an image");
+      return json(res, 200, { path: saved });
+    }
+
     if (path === "/api/annotations" && method === "GET") {
       return json(res, 200, need().read(video).annotations);
     }
 
     if (path === "/api/annotations" && method === "POST") {
       const store = need();
-      const body = (await readJson(req)) as Partial<Annotation> & { frameDataUrl?: string };
-      if (!body.text?.trim()) throw new HttpError(400, "An annotation needs text");
+      const body = (await readJson(req)) as Omit<Partial<Annotation>, "images"> & {
+        frameDataUrl?: string;
+        images?: string[];
+      };
+      if (!body.text?.trim() && !body.images?.length) {
+        throw new HttpError(400, "An annotation needs text");
+      }
       let created: Annotation | undefined;
       store.update(video, (data) => {
         const id = data.annotations.reduce((max, a) => Math.max(max, a.id), 0) + 1;
+        const quote = body.kind === "text" ? textQuote(body.quote) : undefined;
+        if (body.kind === "text" && !quote) throw new HttpError(400, "A comment needs a quote");
         created = {
           id,
-          kind: body.kind === "arrow" ? "arrow" : "pin",
+          kind: body.kind === "arrow" ? "arrow" : quote ? "text" : "pin",
+          ...(quote ? { quote } : {}),
           x: Number(body.x),
           y: Number(body.y),
           ...(body.kind === "arrow" ? { x2: Number(body.x2), y2: Number(body.y2) } : {}),
           t: Number(body.t),
           author: body.author || info.user,
-          text: body.text!.trim(),
+          text: body.text?.trim() ?? "",
           status: "open",
           thread: [],
           createdAt: new Date().toISOString(),
         };
         const png = body.frameDataUrl?.match(/^data:image\/png;base64,(.+)$/)?.[1];
         if (png) created.frame = store.saveFrame(video, id, Buffer.from(png, "base64"));
+        const images = savePasted(body.images, (image, ext) => store.saveImage(video, image, ext));
+        if (images.length) created.images = images;
         data.annotations.push(created);
       });
       emit({ type: "annotations", video });
@@ -360,7 +653,7 @@ export function serve(
       return json(res, 201, created);
     }
 
-    const action = path.match(/^\/api\/annotations\/(\d+)\/(resolve|reopen|reply)$/);
+    const action = path.match(/^\/api\/annotations\/(\d+)\/(resolve|reopen|reply|edit|delete)$/);
     if (action && method === "POST") {
       const id = Number(action[1]);
       if (action[2] === "resolve") findAnnotation(video, id, (a) => (a.status = "resolved"));
@@ -371,17 +664,70 @@ export function serve(
         });
       }
       if (action[2] === "reply") {
-        const body = (await readJson(req)) as { text?: string; author?: string };
-        if (!body.text?.trim()) throw new HttpError(400, "A reply needs text");
+        const body = (await readJson(req)) as { text?: string; author?: string; images?: string[] };
+        if (!body.text?.trim() && !body.images?.length) {
+          throw new HttpError(400, "A reply needs text");
+        }
+        const images = savePasted(body.images, (image, ext) => need().saveImage(video, image, ext));
         findAnnotation(video, id, (a) => {
           a.thread.push({
             who: "user",
             author: body.author || info.user,
-            text: body.text!.trim(),
+            text: body.text?.trim() ?? "",
             at: new Date().toISOString(),
+            ...(images.length ? { images } : {}),
           });
           a.status = "open";
         });
+      }
+      if (action[2] === "edit") {
+        // `message` picks a reply in the thread; without it, the note itself. `keep` lists the
+        // images to keep, `images` adds pasted ones.
+        const body = (await readJson(req)) as {
+          message?: number;
+          text?: string;
+          keep?: string[];
+          images?: string[];
+        };
+        const store = need();
+        const added = savePasted(body.images, (image, ext) => store.saveImage(video, image, ext));
+        const dropped: string[] = [];
+        findAnnotation(video, id, (a) => {
+          const target = body.message === undefined ? a : a.thread[body.message];
+          if (!target || ("who" in target && target.who !== "user")) {
+            throw new HttpError(400, "Only the reviewer's own text can be edited");
+          }
+          const kept = (target.images ?? []).filter((i) => body.keep?.includes(i) ?? true);
+          dropped.push(...(target.images ?? []).filter((i) => !kept.includes(i)));
+          const images = [...kept, ...added];
+          const text = body.text?.trim() ?? target.text;
+          if (!text && !images.length) throw new HttpError(400, "An annotation needs text");
+          target.text = text;
+          if (images.length) target.images = images;
+          else delete target.images;
+          target.editedAt = new Date().toISOString();
+          // Already sent: the change goes with the next Send.
+          if (a.status !== "open") a.status = "open";
+        });
+        for (const f of dropped) store.removeSaved(video, f);
+      }
+      if (action[2] === "delete") {
+        const store = need();
+        let removed: Annotation | undefined;
+        store.update(video, (data) => {
+          removed = data.annotations.find((x) => x.id === id);
+          data.annotations = data.annotations.filter((x) => x.id !== id);
+        });
+        if (!removed) throw new HttpError(404, `No annotation ${id} on ${video}`);
+        for (const f of [
+          removed.frame,
+          ...(removed.images ?? []),
+          ...removed.thread.flatMap((m) => m.images ?? []),
+        ]) {
+          if (f) store.removeSaved(video, f);
+        }
+        emit({ type: "annotations", video });
+        emit({ type: "tree" });
       }
       return json(res, 200, need().read(video).annotations);
     }
@@ -389,19 +735,25 @@ export function serve(
     if (path === "/api/video" && method === "GET") {
       const store = need();
       const result: VideoInfo = {
-        voiceReady: store.read(video).voiceReady ?? false,
+        unvoiced: store.read(video).unvoiced ?? [],
         subtitles: store.subtitlesFor(video),
       };
       return json(res, 200, result);
     }
 
-    if (path === "/api/video" && method === "POST") {
-      const body = (await readJson(req)) as { voiceReady?: boolean };
-      need().update(video, (data) => {
-        data.voiceReady = Boolean(body.voiceReady);
-      });
-      emit({ type: "annotations", video });
-      return json(res, 200, { voiceReady: Boolean(body.voiceReady) });
+    if (path === "/api/agent/voice-pass" && method === "POST") {
+      if (project === null || !agents) throw new HttpError(400, "Give a project");
+      if (!video) throw new HttpError(400, "Give a video");
+      agents.send(
+        project,
+        `[Coanda] Voice pass for ${video}. Record every narration line of this video that has ` +
+          "no matching recording, so the voice is complete and up to date. This costs money, " +
+          "so plan first: list the lines, their count and the estimated cost, and wait for the " +
+          "reviewer's go-ahead before generating anything. When the voice is recorded and the " +
+          "video rebuilt, report its unvoiced lines (an empty list if none are left).",
+        "Voice this video",
+      );
+      return json(res, 200, agents.state(project));
     }
 
     if (path.startsWith("/subtitles/")) {
@@ -422,6 +774,7 @@ export function serve(
 
     if (path === "/api/send" && method === "POST") {
       const store = need();
+      const { planApproval } = (await readJson(req)) as { planApproval?: boolean };
       // With a project, the project's open annotations go to its Claude session. Without one,
       // every open annotation goes to whoever runs `coanda wait`.
       const inProject = (v: string) =>
@@ -444,11 +797,35 @@ export function serve(
       if (project !== null && agents) {
         const batch = undelivered().filter((a) => inProject(a.video));
         for (const a of batch) delivered.add(`${a.video}#${a.id}`);
-        if (batch.length) {
+        // Answers to Claude's questions go with the notes.
+        const answered: AgentQuestion[] = [];
+        store.updateQuestions(project, (list) => {
+          for (const q of list) {
+            if (q.answer && !q.sent) {
+              q.sent = true;
+              answered.push(q);
+            }
+          }
+        });
+        count += answered.length;
+        if (answered.length) emit({ type: "questions", project });
+        if (batch.length || answered.length) {
           agents.send(
             project,
-            "Annotations from the reviewer:\n\n" + JSON.stringify(batch, null, 2),
-            `Sent ${batch.length}`,
+            "Annotations from the reviewer:\n\n" +
+              JSON.stringify(
+                {
+                  ...projectSend(store, project, batch, Boolean(planApproval)),
+                  answers: answered.map((q) => ({
+                    question: q.text,
+                    answer: q.answer!.text,
+                    by: q.answer!.by,
+                  })),
+                },
+                null,
+                2,
+              ),
+            describeSend(batch, answered, Boolean(planApproval)),
           );
         }
       } else {
@@ -487,7 +864,7 @@ export function serve(
       if (!body.video || !body.id || !body.text?.trim()) {
         throw new HttpError(400, "A reply needs video, id and text");
       }
-      claudeReply(body.video, Number(body.id), body.text);
+      claudeReply(body.video, Number(body.id), { text: body.text });
       return json(res, 200, { ok: true });
     }
 
@@ -566,19 +943,163 @@ function claudeAuth(command: string[]): Promise<ClaudeAuth> {
   });
 }
 
-/** Where the training-videos tools read the ElevenLabs key: <tts folder>/elevenlabs_key.txt,
- * with the tts folder from ~/.bloom-training-videos.json, or C:/tts. */
-function defaultElevenLabsKeyFile(): string {
-  let tts = "C:/tts";
+/**
+ * What a project's session receives when the reviewer presses Send: the project's recipe once,
+ * and for each video its switch, a copy of the render as reviewed, and its annotations.
+ */
+function projectSend(
+  store: Store,
+  project: string,
+  batch: SentAnnotation[],
+  planApproval: boolean,
+) {
+  const projectDir = store.resolvePath(project);
+  let recipe: unknown = null;
   try {
-    const cfg = JSON.parse(
-      readFileSync(join(homedir(), ".bloom-training-videos.json"), "utf8"),
-    ) as { tts?: string };
-    if (cfg.tts) tts = cfg.tts;
+    recipe = JSON.parse(readFileSync(join(projectDir, PROJECT_FILE), "utf8"));
   } catch {
-    // No machine config: the tools' own default.
+    // An unreadable recipe is sent as null; the guidance tells the agent to write one.
   }
-  return join(tts, "elevenlabs_key.txt");
+  const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\..*/, "").replace("T", "-");
+  const files = [...new Set(batch.map((a) => a.video))];
+  const thread = (a: SentAnnotation) =>
+    a.thread.map((m) =>
+      m.images ? { ...m, images: m.images.map((i) => store.resolvePath(i)) } : m,
+    );
+  const documents = files.filter(isDocument).map((doc) => ({
+    document: doc,
+    documentFile: store.resolvePath(doc),
+    comments: batch
+      .filter((a) => a.video === doc)
+      .map((a) => ({
+        id: a.id,
+        quote: a.quote,
+        text: a.text,
+        author: a.author,
+        ...(a.editedAt ? { editedAt: a.editedAt } : {}),
+        thread: thread(a),
+        ...(a.images ? { images: a.images.map((i) => store.resolvePath(i)) } : {}),
+      })),
+  }));
+  const videos = files
+    .filter((f) => !isDocument(f))
+    .map((video) => {
+      const videoFile = store.resolvePath(video);
+      // Keep the render the notes refer to; the next render replaces the file at videoFile.
+      const copyDir = store.frameDir(video);
+      mkdirSync(copyDir, { recursive: true });
+      const reviewedCopy = join(copyDir, `reviewed-${stamp}${extname(videoFile)}`);
+      try {
+        copyFileSync(videoFile, reviewedCopy);
+      } catch {
+        // The video is gone or unreadable; the agent still gets the notes.
+      }
+      // The pipeline's timeline for this render, if it writes one: kept with the copy, and made the
+      // base that the next render's timeline is compared with.
+      let reviewedTimeline: string | null = null;
+      if (existsSync(store.timelinePath(video))) {
+        reviewedTimeline = join(copyDir, `reviewed-${stamp}.timeline.json`);
+        copyFileSync(store.timelinePath(video), reviewedTimeline);
+        store.setTimelineBase(video);
+      }
+      store.update(video, (data) => {
+        data.reviewed = {
+          copy: reviewedCopy,
+          ...(reviewedTimeline ? { timeline: reviewedTimeline } : {}),
+        };
+      });
+      const notes = batch.filter((a) => a.video === video);
+      return {
+        video,
+        videoFile,
+        reviewedCopy: existsSync(reviewedCopy) ? reviewedCopy : null,
+        reviewedTimeline,
+        annotations: notes.map((a) => ({
+          id: a.id,
+          t: a.t,
+          kind: a.kind,
+          x: a.x,
+          y: a.y,
+          ...(a.kind === "arrow" ? { x2: a.x2, y2: a.y2 } : {}),
+          text: a.text,
+          author: a.author,
+          ...(a.editedAt ? { editedAt: a.editedAt } : {}),
+          thread: thread(a),
+          frameFile: a.frameFile,
+          ...(a.images ? { images: a.images.map((i) => store.resolvePath(i)) } : {}),
+        })),
+      };
+    });
+  return { planApproval, recipe, videos, documents };
+}
+
+const PASTED_TYPES: Record<string, string> = {
+  png: "png",
+  jpeg: "jpg",
+  gif: "gif",
+  webp: "webp",
+};
+
+/** Saves pasted images, sent as data URLs, with `save`, and returns their paths. */
+function savePasted(dataUrls: unknown, save: (image: Buffer, ext: string) => string): string[] {
+  if (!Array.isArray(dataUrls)) return [];
+  const out: string[] = [];
+  for (const url of dataUrls) {
+    const m = typeof url === "string" && url.match(/^data:image\/(png|jpeg|gif|webp);base64,(.+)$/);
+    if (!m) continue;
+    out.push(save(Buffer.from(m[2], "base64"), PASTED_TYPES[m[1]]));
+  }
+  return out;
+}
+
+/** A well-formed quote for a document comment, or undefined. */
+function textQuote(raw: unknown): TextQuote | undefined {
+  const q = raw as Partial<TextQuote> | undefined;
+  if (typeof q?.exact !== "string" || !q.exact.trim()) return undefined;
+  const str = (s: unknown) => (typeof s === "string" ? s : "");
+  return { exact: q.exact, prefix: str(q.prefix), suffix: str(q.suffix) };
+}
+
+/**
+ * What the chat shows of a send: each note as the conversation it is, the reviewer's words and
+ * Claude's replies in order. Claude itself gets the full details as JSON.
+ */
+function describeSend(
+  batch: SentAnnotation[],
+  answered: AgentQuestion[],
+  planApproval: boolean,
+): string {
+  const time = (t: number) =>
+    `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
+  const notes = batch.map((a) => {
+    const file = a.video.split("/").pop();
+    const head =
+      a.kind === "text" && a.quote
+        ? `${file}, comment ${a.id} on "${a.quote.exact}"`
+        : `${file}, note ${a.id} at ${time(a.t)}`;
+    const lines = [
+      `${a.author}: ${a.text}`,
+      ...a.thread.map(
+        (m) => `${m.who === "claude" ? "Claude" : (m.author ?? "Reviewer")}: ${m.text}`,
+      ),
+    ];
+    return [head, ...lines].join("\n");
+  });
+  const answers = answered.map((q) => `Claude: ${q.text}\n${q.answer!.by}: ${q.answer!.text}`);
+  return [...(planApproval ? ["Ask me before acting."] : []), ...answers, ...notes].join("\n\n");
+}
+
+/** Moves every annotation on a video along a time map; a note whose moment was cut is marked. */
+function moveAnnotations(store: Store, video: string, segments: TimeSegment[]) {
+  store.update(video, (data) => {
+    for (const a of data.annotations) {
+      const moved = mapTime(a.t, segments);
+      if (moved.t === a.t && !moved.cut) continue;
+      a.tOriginal ??= a.t;
+      a.t = moved.t;
+      if (moved.cut) a.cut = true;
+    }
+  });
 }
 
 class HttpError extends Error {

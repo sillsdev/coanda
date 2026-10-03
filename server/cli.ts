@@ -1,18 +1,26 @@
-// coanda serve [<folder>] | coanda wait | coanda reply <video> <id> <text>
+// coanda serve [<folder>] | coanda wait | coanda reply <video> <id> <text> | coanda voice …
 import { readFileSync } from "node:fs";
 import type { SentAnnotation } from "../shared/types.ts";
+import { voice, type VoiceMode } from "../toolkit/voice.ts";
 import { serve } from "./serve.ts";
 
 const DEFAULT_PORT = 4517;
 
 const USAGE = `Usage:
-  coanda serve [<folder>] [--port N] [--user NAME]
+  coanda serve [<folder>] [--port N] [--user NAME] [--config FILE]
       Serve the review app for the videos under <folder>. Without <folder>, reopens the
-      folder used last time. The app can switch folders too.
+      folder used last time. The app can switch folders too. Settings, sessions and the
+      remembered folder are kept beside --config (default ~/.coanda/config.json).
   coanda wait [--port N] [--timeout SECONDS]
       Block until the reviewer clicks Send, then print the sent annotations as JSON.
   coanda reply <video> <id> <text> [--port N]
       Post Claude's reply to one annotation. Use "-" as <text> to read it from stdin.
+  coanda voice <picture> <out> [--timeline FILE] [--mode reuse|pass|plan]
+      Lay narration over a silent picture, from the narration lines in its timeline
+      (default <picture name>.timeline.json). reuse (the default) uses recordings already
+      in the voice cache and leaves a gap for any other line; pass records the missing
+      lines first, which costs money; plan prints what a pass would record and cost, as
+      JSON, and makes nothing. Settings come from "voice" in video-project.json.
 
 The port defaults to $COANDA_PORT, or ${DEFAULT_PORT}.`;
 
@@ -38,7 +46,12 @@ async function main() {
 
   switch (command) {
     case "serve": {
-      const server = await serve({ root: positional[0], port, user: flags.user });
+      const server = await serve({
+        root: positional[0],
+        port,
+        user: flags.user,
+        ...(flags.config ? { configFile: flags.config } : {}),
+      });
       const where = server.root ?? "no folder yet (choose one in the app)";
       console.log(`Coanda is serving ${where} at http://localhost:${server.port}`);
       break;
@@ -90,6 +103,17 @@ async function main() {
       });
       if (!res.ok) throw new Error(((await res.json()) as { error: string }).error);
       console.log(`Replied to annotation ${id} on ${video}`);
+      break;
+    }
+
+    case "voice": {
+      const [picture, out] = positional;
+      const mode = (flags.mode ?? "reuse") as VoiceMode;
+      if (!["reuse", "pass", "plan"].includes(mode)) throw new UsageError(`Unknown mode ${mode}`);
+      if (!picture || (!out && mode !== "plan"))
+        throw new UsageError("voice needs <picture> <out>");
+      const result = await voice({ picture, out: out ?? "", timeline: flags.timeline, mode });
+      if (mode === "plan") console.log(JSON.stringify(result, null, 2));
       break;
     }
 

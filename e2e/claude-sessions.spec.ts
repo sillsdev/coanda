@@ -20,6 +20,7 @@ const claudeCommand = [process.execPath, join(repo, "e2e", "fake-claude.mjs")];
 
 interface FakeState {
   turns: number;
+  lastMessage?: string;
   starts: { args: string[]; cwd: string }[];
 }
 
@@ -82,9 +83,7 @@ test("each video project gets its own Claude session, which survives a restart",
     await expect(log.locator(".agent-msg.tool")).toHaveText(["Bash: node render.mjs"]);
 
     // …then replies on the annotation itself, and is done.
-    await expect(page.getByTestId("card-1")).toContainText(
-      "Fixed: Make the counter bigger (no new voice)",
-    );
+    await expect(page.getByTestId("card-1")).toContainText("Fixed: Make the counter bigger");
     await expect(page.getByTestId("card-1")).toHaveAttribute("data-status", "replied");
     await expect(projectBadge("getting-started")).toHaveAttribute("data-status", "done");
     const first = await sessionIn();
@@ -127,10 +126,28 @@ test("each video project gets its own Claude session, which survives a restart",
     await page.locator('[data-path="getting-started/welcome.webm"]').click();
     await expect(log).toContainText(`Turn 2 in session ${first}`);
     await message(page, "Carry on");
+    // The resumed process first ends the old conversation's last turn; that isn't this
+    // message's turn, so the session stays working until its own turn ends.
+    await expect(log).toContainText("No response requested.");
+    await expect(projectBadge("getting-started")).toHaveAttribute("data-status", "working");
     await expect(log).toContainText(`Turn 3 in session ${first}`);
     await expect(projectBadge("getting-started")).toHaveAttribute("data-status", "done");
     expect(readFake(first).starts.at(-1)!.args).toEqual(
       expect.arrayContaining(["--resume", first]),
+    );
+
+    // Coanda stopping in the middle of a turn: when it starts again, the session carries on
+    // with that turn by itself, told what the reviewer last said.
+    await message(page, "Make it shorter");
+    await expect(projectBadge("getting-started")).toHaveAttribute("data-status", "working");
+    server.close();
+    server = await serve(options);
+    await page.goto(`http://127.0.0.1:${server.port}/`);
+    await page.locator('[data-path="getting-started/welcome.webm"]').click();
+    await expect(log).toContainText("Coanda restarted during this turn. Carrying on.");
+    await expect(projectBadge("getting-started")).toHaveAttribute("data-status", "done");
+    expect(readFake(first).lastMessage).toContain(
+      "the reviewer's last message was:\n\nMake it shorter",
     );
 
     // A video outside every project offers to make one; Send there goes to `coanda wait`.
@@ -142,6 +159,7 @@ test("each video project gets its own Claude session, which survives a restart",
     server.close();
   } finally {
     delete process.env.FAKE_CLAUDE_STATE;
-    if (existsSync(scratch)) rmSync(scratch, { recursive: true, force: true });
+    if (existsSync(scratch))
+      rmSync(scratch, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   }
 });

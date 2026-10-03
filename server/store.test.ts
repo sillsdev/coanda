@@ -19,10 +19,14 @@ beforeEach(() => {
 
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 
-test("tree lists every folder, then the videos, and skips other files and hidden folders", () => {
+test("tree lists every folder, then the files, and skips Coanda's own files and hidden folders", () => {
+  writeFileSync(join(root, "lessons", "one.mp4.coanda.json"), '{"annotations":[]}');
   const tree = new Store(root).tree();
   expect(tree.map((n) => n.path)).toEqual(["empty", "lessons", "intro.webm"]);
-  expect(tree[1].children?.map((n) => n.path)).toEqual(["lessons/one.mp4"]);
+  expect(tree[1].children?.map((n) => [n.path, n.kind])).toEqual([
+    ["lessons/notes.txt", "file"],
+    ["lessons/one.mp4", "video"],
+  ]);
 });
 
 test("annotation counts come from the file next to the video", () => {
@@ -50,4 +54,20 @@ test("annotation counts come from the file next to the video", () => {
 
 test("paths outside the folder are refused", () => {
   expect(() => new Store(root).resolvePath("../elsewhere.mp4")).toThrow(/outside/);
+});
+
+test("in a project, the planning documents come first, in step order", () => {
+  writeFileSync(join(root, "lessons", "video-project.json"), "{}");
+  writeFileSync(join(root, "lessons", "script.md"), "");
+  writeFileSync(join(root, "lessons", "brief.md"), "");
+  mkdirSync(join(root, "lessons", "assets"));
+  const lessons = new Store(root).tree()[1].children!;
+  expect(lessons.map((n) => [n.name, n.step])).toEqual([
+    ["brief.md", 1],
+    ["script.md", 3],
+    ["assets", undefined],
+    ["notes.txt", undefined],
+    ["one.mp4", undefined],
+    ["video-project.json", undefined],
+  ]);
 });

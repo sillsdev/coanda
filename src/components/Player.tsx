@@ -8,10 +8,12 @@ import {
   type Ref,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import type { Annotation } from "../../shared/types.ts";
+import type { Annotation, UnvoicedLine } from "../../shared/types.ts";
 import type { NewAnnotation } from "../api.ts";
 import { avatarColor, formatTime, initials } from "../format.ts";
 import { CaptionsIcon, MicIcon, PauseIcon, PlayIcon } from "./icons.tsx";
+import { usePastedImages } from "../pastedImages.ts";
+import { Thumbs } from "./PastedImages.tsx";
 
 /** How close (in seconds) the playhead must be for an annotation to show on the frame. */
 const SHOW_WINDOW = 1.5;
@@ -49,8 +51,10 @@ interface Props {
   me: string;
   ref?: Ref<PlayerHandle>;
   renderedAt: number | null;
-  voiceReady: boolean;
-  onToggleVoice: () => void;
+  /** Narration lines this render has no recording for. */
+  unvoiced: UnvoicedLine[];
+  /** Asks the project's session to record the missing voice; absent outside a project. */
+  onVoicePass?: () => void;
   /** URLs of subtitle tracks for this video, as WebVTT. */
   subtitles: string[];
   showSubtitles: boolean;
@@ -76,6 +80,14 @@ export function Player(props: Props) {
   const [drag, setDrag] = useState<{ x: number; y: number; x2: number; y2: number } | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [saving, setSaving] = useState(false);
+  const pasted = usePastedImages();
+  const clearPasted = pasted.clear;
+  const hasDraft = draft !== null;
+
+  // Pasted images belong to one draft: they go when it's saved or cancelled.
+  useEffect(() => {
+    if (!hasDraft) clearPasted();
+  }, [hasDraft, clearPasted]);
 
   // Fit the stage to the video's shape inside the space available.
   useLayoutEffect(() => {
@@ -248,11 +260,18 @@ export function Player(props: Props) {
     }
   };
 
+  const draftEmpty = !draft?.text.trim() && !pasted.images.length;
+
   const saveDraft = async () => {
-    if (!draft || !draft.text.trim() || saving) return;
+    if (!draft || draftEmpty || saving) return;
     setSaving(true);
     try {
-      await props.onCreate({ ...draft, t: Math.round(t * 10) / 10, frameDataUrl: captureFrame() });
+      await props.onCreate({
+        ...draft,
+        t: Math.round(t * 10) / 10,
+        frameDataUrl: captureFrame(),
+        images: pasted.images,
+      });
       setDraft(null);
     } finally {
       setSaving(false);
@@ -307,11 +326,21 @@ export function Player(props: Props) {
 
   const popStyle: CSSProperties = draft ? { left: draft.boxLeft, top: draft.boxTop } : {};
 
+  const unvoicedNow = props.unvoiced.find((l) => t >= l.start && t < l.end);
   const marks = annotations.filter((a) => a.status !== "resolved" || showResolved);
   const progress = duration ? (t / duration) * 100 : 0;
 
   return (
-    <main className="player">
+    <main
+      className="player"
+      onClick={(e) => {
+        // A click beside the video, where a note might have been meant, plays or pauses it.
+        const target = e.target as HTMLElement;
+        if (!target.matches(".player, .title-row, .stage-area")) return;
+        if (draft && !draftEmpty) return;
+        togglePlay();
+      }}
+    >
       <div className="title-row">
         {renderedAt && (
           <span className="fresh" data-testid="fresh-render">
@@ -320,13 +349,16 @@ export function Player(props: Props) {
           </span>
         )}
         <button
-          className={`toggle${props.voiceReady ? " on" : ""}`}
-          aria-pressed={props.voiceReady}
-          data-testid="voice-ready"
-          onClick={props.onToggleVoice}
+          className="btn btn-ghost-outline voice-btn"
+          data-testid="voice-pass"
+          disabled={!props.onVoicePass}
+          onClick={props.onVoicePass}
         >
           <MicIcon />
-          Ready for voice
+          Voice video
+          {props.unvoiced.length > 0 && (
+            <span className="count-badge">{props.unvoiced.length}</span>
+          )}
         </button>
       </div>
 
@@ -362,6 +394,12 @@ export function Player(props: Props) {
                 <track key={url} kind="subtitles" src={url} />
               ))}
             </video>
+            {unvoicedNow && (
+              <div className="unvoiced-now" data-testid="unvoiced-now">
+                <span className="unvoiced-label">Not voiced</span>
+                {unvoicedNow.text}
+              </div>
+            )}
           </div>
           <svg className="overlay" width={stage.w} height={stage.h}>
             {arrows.map((a) => (
@@ -419,11 +457,13 @@ export function Player(props: Props) {
                 placeholder="What should change here?"
                 value={draft.text}
                 onChange={(e) => setDraft({ ...draft, text: e.target.value })}
+                onPaste={pasted.onPaste}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) void saveDraft();
                   if (e.key === "Escape") setDraft(null);
                 }}
               />
+              <Thumbs pasted={pasted.images} onRemove={pasted.remove} />
               <div className="draft-actions">
                 <button className="btn btn-ghost-outline push-right" onClick={() => setDraft(null)}>
                   Cancel
@@ -431,7 +471,7 @@ export function Player(props: Props) {
                 <button
                   className="btn btn-primary"
                   onClick={() => void saveDraft()}
-                  disabled={!draft.text.trim() || saving}
+                  disabled={draftEmpty || saving}
                 >
                   Comment
                 </button>
@@ -464,6 +504,18 @@ export function Player(props: Props) {
         >
           <div className="track-rail" />
           <div className="track-fill" style={{ width: `${progress}%` }} />
+          {duration > 0 &&
+            props.unvoiced.map((l, i) => (
+              <div
+                key={i}
+                className="track-unvoiced"
+                title={l.text}
+                style={{
+                  left: `${(l.start / duration) * 100}%`,
+                  width: `${(Math.max(l.end - l.start, 0.2) / duration) * 100}%`,
+                }}
+              />
+            ))}
           <div className="track-thumb" style={{ left: `${progress}%` }} />
           {duration > 0 &&
             marks.map((a) => (

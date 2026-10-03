@@ -22,7 +22,7 @@ export function AgentStatusBadge({
       data-status={status}
       title={withLabel ? undefined : LABELS[status]}
     >
-      <span className="agent-dot" />
+      <span className="agent-dot">{status === "question" && "?"}</span>
       {withLabel && LABELS[status]}
     </span>
   );

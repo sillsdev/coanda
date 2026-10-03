@@ -27,6 +27,15 @@ export function ChevronIcon({ className, size = 14, open }: IconProps & { open?:
   );
 }
 
+export function FileIcon({ className, size = 14 }: IconProps) {
+  return (
+    <svg className={className} width={size} height={size} viewBox="0 0 24 24" {...stroke}>
+      <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" />
+      <path d="M14 2v4a2 2 0 0 0 2 2h4" />
+    </svg>
+  );
+}
+
 export function FolderIcon({ className, size = 14 }: IconProps) {
   return (
     <svg className={className} width={size} height={size} viewBox="0 0 24 24" {...stroke}>
@@ -97,6 +106,39 @@ export function SendIcon({ className, size = 15 }: IconProps) {
     <svg className={className} width={size} height={size} viewBox="0 0 24 24" {...stroke}>
       <path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z" />
       <path d="m21.854 2.147-10.94 10.939" />
+    </svg>
+  );
+}
+
+export function ArrowRightIcon({ className, size = 16 }: IconProps) {
+  return (
+    <svg className={className} width={size} height={size} viewBox="0 0 24 24" {...stroke}>
+      <path d="M5 12h14M13 6l6 6-6 6" />
+    </svg>
+  );
+}
+
+export function CommentIcon({ className, size = 17 }: IconProps) {
+  return (
+    <svg className={className} width={size} height={size} viewBox="0 0 24 24" {...stroke}>
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+      <path d="M12 7v6M9 10h6" />
+    </svg>
+  );
+}
+
+export function PencilIcon({ className, size = 12 }: IconProps) {
+  return (
+    <svg className={className} width={size} height={size} viewBox="0 0 24 24" {...stroke}>
+      <path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" />
+    </svg>
+  );
+}
+
+export function TrashIcon({ className, size = 13 }: IconProps) {
+  return (
+    <svg className={className} width={size} height={size} viewBox="0 0 24 24" {...stroke}>
+      <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
     </svg>
   );
 }
