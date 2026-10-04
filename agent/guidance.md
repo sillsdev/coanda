@@ -65,9 +65,14 @@ that moment, and that the on-screen text and the book are in the brief's languag
 
 **Draft video.** When the reviewer asks for it, build the first draft from the approved
 script: write or rewrite the shot list from its sections and screen lines, set up what it
-needs, record, assemble, and lay the narration over it with `coanda voice` in its default
-mode, which leaves a gap for each line not yet recorded. Start by saying what you'll do and
-roughly how long it will take. From there, the reviewer's notes on the draft take over.
+needs, record, assemble, and add the narration as subtitles with `coanda subtitles`. The draft
+is silent, with no voice at all, and stays silent through every round of notes until the
+reviewer asks for the voice pass. Start by saying what you'll do and roughly how long it will
+take. From there, the reviewer's notes on the draft take over.
+
+**When a video is ready to watch**, as the last step, select it in Coanda with
+`coanda show <video>`, and give its path in your message. Only the video to watch: the
+silent picture a draft is made from is an intermediate file.
 
 ## Each round of notes
 
@@ -101,29 +106,19 @@ roughly how long it will take. From there, the reviewer's notes on the draft tak
 
 ## Voice, and other costs
 
-Coanda makes the voice-over for you with `coanda voice`, so use it rather than writing your own
-(see "Coanda's tools" below). Generating voice costs money, so it happens in one place: a
-**voice pass**, which the reviewer asks for with "Voice video" when they're happy with the
-picture. Coanda sends it as a message starting "[Coanda] Voice pass". Plan it first, with
-`--mode plan`, and wait for the go-ahead. The plan lists:
-
-- the lines to record, their count, and the estimated cost, from the recipe's `voice` entry
-  (provider, voice, model, and price or plan; add it if it's missing). Where usage comes out
-  of free credits, give both the credits and what it would cost in money;
-- separately, as optional extras the reviewer can accept or skip: kept lines whose neighbours
-  changed, since each was spoken with its old neighbours and may now sound wrong, and lines
-  kept despite a difference in punctuation.
-
-Then run it with `--mode pass`. Filling a gap changes the line's length from the estimate, so
+Drafts are silent: the narration is subtitles, made with `coanda subtitles`, and nothing
+else. Don't add voice to a draft, and don't reuse recordings in one, even when they exist.
+Voice comes once, at the end, in a **voice pass**, which the reviewer asks for with "Voice
+video" when they're happy with the picture. Coanda sends it as a message starting "[Coanda]
+Voice pass". Plan it first, with `coanda voice --mode plan`, and wait for the go-ahead. The
+plan lists the lines to record, their count, and the estimated cost, from the recipe's
+`voice` entry (provider, voice, model, and price or plan; add it if it's missing). Where usage
+comes out of free credits, give both the credits and what it would cost in money. Then run it
+with `--mode pass`. A recorded line runs to its own length rather than the estimate, so
 everything after it moves; Coanda moves the notes.
 
-Outside a voice pass, always run `coanda voice` in its default mode. It keeps every recorded
-line whose words still match, apart from final punctuation, and never records: a line with no
-recording (inserted or reworded) gets a gap of the length it should take to say. Coanda reads
-the gaps from the files `coanda voice` writes and shows the reviewer those stretches, with the
-missing words on screen, so silence there isn't mistaken for a mistake. Give that note's reply
-the status "voice". Report a recording kept despite a punctuation difference in that note's
-reply, with status "partial".
+A note about the narration's words, before the voice pass, is a change to the script and the
+subtitles; reply "done" once the subtitles say it.
 
 Publishing or uploading always needs the reviewer to ask for it in words.
 
@@ -134,8 +129,11 @@ The project keeps its content: the script, narration, shot list, cards and recip
 commands run as `"<node>" <coanda>/server/cli.ts <command>`: use that Node, since the
 one on the PATH may be too old.
 
-`coanda voice <picture> <out> [--timeline FILE] [--mode reuse|pass|plan]` lays narration over a
-silent picture. It reads the picture's timeline (`<picture name>.timeline.json` beside it, or
+`coanda show <video>` selects the video in the reviewer's Coanda, so it's the one they see.
+
+`coanda subtitles <picture> <out>` makes the draft video from a silent picture: the picture
+with its narration as subtitles, each line shown for as long as it should take to say, and no
+audio. It reads the picture's timeline (`<picture name>.timeline.json` beside it, or
 `--timeline`), in which an anchor with `say` is a narration line:
 
 ```json
@@ -148,22 +146,24 @@ silent picture. It reads the picture's timeline (`<picture name>.timeline.json` 
 ```
 
 `say` is the words; `key` names the moment. Keep a line's key when you reword it, if you can,
-so notes on it stay with it. Settings come from the `voice` entry of `video-project.json`:
-`voiceId`, `model`, `cache` (the recordings folder, relative to the project), `secondsPerWord`
-(how long a word takes in this voice, which sizes the gaps; 0.43 if absent),
-`pricePer1000Characters`, `currency`, and `language` (the narration's ISO 639-2 code, such as
-"eng", for the subtitle track). The ElevenLabs key comes from Coanda's settings. A pass sends
-each line with the lines before and after it as context, so it's spoken as part of the
-narration around it.
+so notes on it stay with it. Where a line needs longer than its shot gives it, the picture
+freezes for the difference. `secondsPerWord` in the recipe's `voice` entry sets how long a word
+takes to say (0.43 if absent), and `language` (an ISO 639-2 code such as "eng") tags the
+subtitle track.
 
-Each subtitle starts with its line and ends 0.4 s after the speech ends, or 0.05 s before the
-next line starts if that's sooner. A line with no recording is subtitled for the length of its
-gap.
+`coanda voice <picture> <out> --mode plan|pass` is the voice pass, and only that: `plan` prints
+what it would record and cost and makes nothing; `pass` records each line with ElevenLabs
+(the key comes from Coanda's settings), keeping any recording already made of the same words,
+and lays them over the picture. Its settings are the rest of the `voice` entry: `voiceId`,
+`model`, `cache` (the recordings folder, relative to the project), `pricePer1000Characters`
+and `currency`. It sends each line with the lines before and after it as context, so it's
+spoken as part of the narration around it.
 
-Beside `<out>` it writes `<name>.srt`, `<name>.timeline.json` (the picture's timeline moved
-past the freezes it added where a line overran its shot) and `<name>.voice.json` (each line,
-and the lines still unvoiced). Coanda watches for `<name>.voice.json`: when it appears it
-updates the unvoiced stretches and moves the notes, with nothing for you to report.
+Each subtitle starts with its line and ends 0.4 s after the line ends, or 0.05 s before the
+next line starts if that's sooner. Both commands write, beside `<out>`, `<name>.srt`,
+`<name>.timeline.json` (the picture's timeline moved past the freezes) and
+`<name>.voice.json`. Coanda watches for `<name>.voice.json`: when it appears it moves the
+notes to the new timing, with nothing for you to report.
 
 `coanda image <out> [<input>...] --prompt TEXT` makes an image, or edits one, with OpenAI's
 GPT Image 2.5 Sunburst through OpenRouter (the key comes from Coanda's settings; a recipe can
@@ -234,17 +234,16 @@ exactly one fenced block, with a reply for every annotation you were sent:
 ```
 
 Each reply's `status` is one of: "done"; "partial" (done with a caveat, which the text gives);
-"voice" (waiting on a voice pass); "question" (you need the reviewer first; the text says
-what). Give `t`, the note's moment in the new render, whenever a re-cut moved it: Coanda moves
+"question" (you need the reviewer first; the text says what). Give `t`, the note's moment in the new render, whenever a re-cut moved it: Coanda moves
 the note there. If the note's moment was cut out entirely, give the point where the cut is,
 and say so in the text.
 
 Annotation times follow the video automatically after a re-cut, for every note on it, resolved
 ones included. Coanda does this from **timelines**: each render has, beside it,
-`<name>.timeline.json` (for `draft-voiced.mp4`, `draft-voiced.timeline.json`), listing the
-render's named moments and when they happen in it. `coanda voice` writes the voiced render's
-timeline from the silent picture's, so the build only has to write the picture's, with `say`
-on each narration line (see "Coanda's tools"):
+`<name>.timeline.json` (for `draft.mp4`, `draft.timeline.json`), listing the
+render's named moments and when they happen in it. `coanda subtitles` and `coanda voice` write
+the render's timeline from the silent picture's, so the build only has to write the picture's,
+with `say` on each narration line (see "Coanda's tools"):
 
 ```json
 {
@@ -269,11 +268,6 @@ different timing: the stretches of the previous render that are still in the new
 where it is now, as `{"from": [start, end], "to": [start, end]}` in seconds. Whatever no stretch
 covers was cut. A `timeMap` in the block is used instead of the timelines. A reply's own `t`
 overrides both for that note.
-
-Only for a video you voiced some other way than `coanda voice`, give `unvoiced` in the block:
-`{"<video>": [{"start": 131.2, "end": 134.0, "text": "The words"}]}`, its complete list of
-lines with no recording at their times in the new render, or an empty list when every line is
-voiced. Coanda replaces the video's list with yours.
 
 **Asking the reviewer.** A question about one note goes in that note's reply, with status
 "question". Any other question goes in the block's `questions`, one question per entry:

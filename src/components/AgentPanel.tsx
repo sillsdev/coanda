@@ -104,9 +104,20 @@ export function AgentPanel(props: Props) {
       </div>
       {auth && !auth.loggedIn ? (
         <div className="agent-login">
-          <button className="btn btn-primary" onClick={onLogin}>
-            Log in to Claude
-          </button>
+          {auth.installed ? (
+            <button className="btn btn-primary" onClick={onLogin}>
+              Log in to Claude
+            </button>
+          ) : (
+            <a
+              className="btn btn-primary"
+              href="https://claude.com/claude-code"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Install Claude Code
+            </a>
+          )}
         </div>
       ) : (
         <>

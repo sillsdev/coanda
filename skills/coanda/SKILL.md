@@ -46,12 +46,12 @@ nothing was waiting). Each entry has:
 - `text`: what the reviewer asked for; `author`: who asked
 - `thread`: earlier replies, yours (`who: "claude"`) and the reviewer's (`who: "user"`).
   When the last message is the reviewer's, they are answering your earlier reply.
-- `voiceReady`: the video's **Include voice** switch, off by default. While it is off,
-  do **not** generate new voice-over audio (it costs money each time): reuse the existing
-  narration, or a placeholder, when you re-render. Generate the voice only once the reviewer
-  has turned it on.
 - `frameFile`: a PNG of the frame they annotated. **Read it**: the pin or arrow position is
   only meaningful against that picture.
+
+Drafts are silent, with the narration as subtitles (`coanda subtitles`): never add voice to
+one. Voice-over costs money, and comes once, at the end, when the reviewer asks for the voice
+pass.
 
 ## 3. Make the changes and reply
 

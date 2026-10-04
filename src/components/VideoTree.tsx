@@ -62,6 +62,31 @@ export function VideoTree(props: Props) {
   // A folder starts out open when there is a video somewhere inside it.
   const isOpen = (node: TreeNode) => hasVideo(node) !== toggled.has(node.path);
 
+  // Open the folders above whatever gets selected, so it can be seen.
+  useEffect(() => {
+    if (!selected) return;
+    const above: TreeNode[] = [];
+    const find = (nodes: TreeNode[]): boolean =>
+      nodes.some((n) => {
+        if (n.path === selected) return true;
+        if (n.kind === "folder" && find(n.children ?? [])) return above.push(n) > 0;
+        return false;
+      });
+    if (!find(tree)) return;
+    const closed = above.filter((n) => hasVideo(n) === toggled.has(n.path));
+    if (closed.length)
+      setToggled(
+        (prev) =>
+          new Set(
+            [...prev]
+              .filter((p) => !closed.some((n) => n.path === p))
+              .concat(closed.filter((n) => !hasVideo(n)).map((n) => n.path)),
+          ),
+      );
+    // Only when the selection changes or the tree first arrives, not when the user closes a folder.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, tree.length > 0]);
+
   const rows: { node: TreeNode; depth: number; open: boolean }[] = [];
   const walk = (nodes: TreeNode[], depth: number) => {
     for (const node of nodes) {

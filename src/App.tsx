@@ -78,9 +78,9 @@ function App() {
   const [videoInfo, setVideoInfo] = useState<VideoInfo | null>(null);
   const [showSubtitles, setShowSubtitles] = useState(() => {
     try {
-      return localStorage.getItem("coanda.subtitles") === "on";
+      return localStorage.getItem("coanda.subtitles") !== "off";
     } catch {
-      return false;
+      return true;
     }
   });
   const [planApproval, setPlanApproval] = useState(() => {
@@ -118,6 +118,7 @@ function App() {
   useEffect(() => {
     videoRef.current = video;
   }, [video]);
+  const chooseVideoRef = useRef<(path: string) => void>(() => {});
 
   /** Shows a newly chosen folder, starting with no video selected. */
   // The folder shown, so a change of folder can be told apart from a refresh of the same one.
@@ -197,6 +198,20 @@ function App() {
     if (!auth) void api.claudeAuth().then(setAuth);
   }, [project, loadAgent, auth]);
 
+  // Until Claude Code is installed and logged in, keep asking: both happen outside Coanda.
+  const loggedIn = auth?.loggedIn ?? true;
+  useEffect(() => {
+    if (loggedIn) return;
+    const timer = setInterval(() => {
+      if (document.visibilityState === "visible")
+        void api
+          .claudeAuth()
+          .then(setAuth)
+          .catch(() => {});
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [loggedIn]);
+
   useEffect(() => {
     api.info().then(showFolder, (e: Error) => setError(e.message));
     api.tree().then(setTree, (e: Error) => setError(e.message));
@@ -219,6 +234,7 @@ function App() {
         if (e.type === "video-changed" && e.video === videoRef.current) setRenderedAt(Date.now());
         if (e.type === "doc-changed" && e.path === videoRef.current) setDocVersion((v) => v + 1);
         if (e.type === "agent" && e.project === projectRef.current) void loadAgent(e.project);
+        if (e.type === "show") chooseVideoRef.current(e.video);
         if (e.type === "questions" && e.project === projectRef.current) {
           void loadQuestions(e.project);
         }
@@ -253,6 +269,9 @@ function App() {
     setAgent(null);
     setVideo(path);
   };
+  useEffect(() => {
+    chooseVideoRef.current = chooseVideo;
+  });
 
   const node = video ? findNode(tree, video) : undefined;
   // Send covers the selected video's project when it has one, else the whole folder.
@@ -518,11 +537,7 @@ function App() {
           onStop={() => project != null && void run(api.agentStop(project).then(setAgent))}
           onOpenPath={openPath}
           onCompact={() => project != null && void run(api.agentCompact(project).then(setAgent))}
-          onLogin={() => {
-            void run(api.claudeLogin());
-            // Check again once the browser sign-in has had time to finish.
-            setTimeout(() => void api.claudeAuth().then(setAuth), 15000);
-          }}
+          onLogin={() => void run(api.claudeLogin())}
         />
       </div>
       {error && (

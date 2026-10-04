@@ -200,6 +200,8 @@ export interface ProjectSettings {
 }
 
 export interface ClaudeAuth {
+  /** False when the `claude` command could not be found. */
+  installed: boolean;
   loggedIn: boolean;
   email?: string;
 }
@@ -233,7 +235,9 @@ export type ServerEvent =
   | { type: "questions"; project: string }
   | { type: "status" }
   | { type: "root" }
-  | { type: "agent"; project: string };
+  | { type: "agent"; project: string }
+  /** Claude asked for this video to be selected in the app. */
+  | { type: "show"; video: string };
 
 /** The documents a video is planned in, in the order they're written, each built on the last. */
 export const PLANNING_STEPS = [

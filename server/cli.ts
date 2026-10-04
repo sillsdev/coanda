@@ -1,5 +1,7 @@
-// coanda serve [<folder>] | coanda wait | coanda reply <video> <id> <text> | coanda voice …
+// coanda serve [<folder>] | coanda wait | coanda reply … | coanda subtitles … | coanda voice … |
+// coanda image …
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import type { SentAnnotation } from "../shared/types.ts";
 import { image } from "../toolkit/image.ts";
 import { credits, openRouterKey } from "../toolkit/openrouter.ts";
@@ -17,12 +19,17 @@ const USAGE = `Usage:
       Block until the reviewer clicks Send, then print the sent annotations as JSON.
   coanda reply <video> <id> <text> [--port N]
       Post Claude's reply to one annotation. Use "-" as <text> to read it from stdin.
-  coanda voice <picture> <out> [--timeline FILE] [--mode reuse|pass|plan]
-      Lay narration over a silent picture, from the narration lines in its timeline
-      (default <picture name>.timeline.json). reuse (the default) uses recordings already
-      in the voice cache and leaves a gap for any other line; pass records the missing
-      lines first, which costs money; plan prints what a pass would record and cost, as
-      JSON, and makes nothing. Settings come from "voice" in video-project.json.
+  coanda show <video> [--port N]
+      Select <video> in the open app, so the reviewer sees it.
+  coanda subtitles <picture> <out> [--timeline FILE]
+      Make the draft video: the silent picture with its narration as subtitles, each
+      line shown for as long as it should take to say, from the narration lines in the
+      picture's timeline (default <picture name>.timeline.json). No audio.
+  coanda voice <picture> <out> --mode plan|pass [--timeline FILE]
+      The voice pass, which costs money: plan prints what it would record and cost, as
+      JSON, and makes nothing; pass records each narration line, keeping any recording
+      already made of the same words, and lays them over the picture. Settings come from
+      "voice" in video-project.json.
   coanda image <out> [<input>...] --prompt TEXT [--references] [--aspect 16:9 | --size WxH]
                [--quality Q] [--model ID] [--estimate]
       Make an image from TEXT through OpenRouter (key from Coanda's settings). Given
@@ -125,12 +132,34 @@ async function main() {
       break;
     }
 
+    case "show": {
+      const [video] = positional;
+      if (!video) throw new UsageError("show needs <video>");
+      const res = await fetch(`${base}/api/show`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ video: resolve(video) }),
+      });
+      if (!res.ok) throw new Error(((await res.json()) as { error: string }).error);
+      console.log(`Showing ${((await res.json()) as { video: string }).video}`);
+      break;
+    }
+
+    case "subtitles": {
+      const [picture, out] = positional;
+      if (!picture || !out) throw new UsageError("subtitles needs <picture> <out>");
+      await voice({ picture, out, timeline: flags.timeline, mode: "silent" });
+      break;
+    }
+
     case "voice": {
       const [picture, out] = positional;
-      const mode = (flags.mode ?? "reuse") as VoiceMode;
-      if (!["reuse", "pass", "plan"].includes(mode)) throw new UsageError(`Unknown mode ${mode}`);
-      if (!picture || (!out && mode !== "plan"))
+      const mode = flags.mode as VoiceMode;
+      if (mode !== "pass" && mode !== "plan")
+        throw new UsageError("voice needs --mode plan or pass");
+      if (!picture || (!out && mode !== "plan")) {
         throw new UsageError("voice needs <picture> <out>");
+      }
       const result = await voice({ picture, out: out ?? "", timeline: flags.timeline, mode });
       if (mode === "plan") console.log(JSON.stringify(result, null, 2));
       break;

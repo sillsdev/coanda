@@ -577,7 +577,18 @@ export function serve(
 
     if (path === "/api/claude-login" && method === "POST") {
       const [cmd, ...base] = claudeCommand;
-      spawn(cmd, [...base, "auth", "login"], { detached: true, stdio: "ignore" }).unref();
+      const child = spawn(cmd, [...base, "auth", "login"], { detached: true, stdio: "ignore" });
+      await new Promise<void>((resolveSpawn, rejectSpawn) => {
+        child.once("spawn", resolveSpawn);
+        child.once("error", (err: NodeJS.ErrnoException) =>
+          rejectSpawn(
+            err.code === "ENOENT"
+              ? new HttpError(500, "Claude Code is not installed")
+              : new HttpError(500, err.message),
+          ),
+        );
+      });
+      child.unref();
       return json(res, 200, { started: true });
     }
 
@@ -929,6 +940,17 @@ export function serve(
       return json(res, 200, { ok: true });
     }
 
+    if (path === "/api/show" && method === "POST") {
+      const store = need();
+      const body = (await readJson(req)) as { video?: string };
+      if (!body.video) throw new HttpError(400, "show needs a video");
+      const full = store.resolvePath(body.video);
+      if (!existsSync(full)) throw new HttpError(404, `No video at ${body.video}`);
+      const video = store.toRelative(full);
+      emit({ type: "show", video });
+      return json(res, 200, { video });
+    }
+
     if (path.startsWith("/media/")) {
       return sendFile(
         req,
@@ -989,17 +1011,19 @@ function claudeAuth(command: string[]): Promise<ClaudeAuth> {
     try {
       const child = spawn(cmd, [...base, "auth", "status", "--json"], { windowsHide: true });
       child.stdout.on("data", (b: Buffer) => (out += b.toString()));
-      child.on("error", () => resolvePromise({ loggedIn: false }));
+      child.on("error", (err: NodeJS.ErrnoException) =>
+        resolvePromise({ installed: err.code !== "ENOENT", loggedIn: false }),
+      );
       child.on("close", () => {
         try {
           const data = JSON.parse(out) as { loggedIn?: boolean; email?: string };
-          resolvePromise({ loggedIn: Boolean(data.loggedIn), email: data.email });
+          resolvePromise({ installed: true, loggedIn: Boolean(data.loggedIn), email: data.email });
         } catch {
-          resolvePromise({ loggedIn: false });
+          resolvePromise({ installed: true, loggedIn: false });
         }
       });
     } catch {
-      resolvePromise({ loggedIn: false });
+      resolvePromise({ installed: true, loggedIn: false });
     }
   });
 }

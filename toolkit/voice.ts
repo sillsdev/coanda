@@ -1,13 +1,14 @@
-// `coanda voice`: lays narration over a silent picture.
+// The narration track of a video, made from the silent picture and its timeline, whose anchors
+// with `say` are the narration lines.
 //
-// It reads the picture's timeline, whose anchors with `say` are the narration lines, and gives
-// each line a recording from the project's voice cache, matched by its words. A line with no
-// recording gets a gap as long as it should take to say, so the picture keeps its timing; only
-// a voice pass records new lines, because recording costs money. Where a line runs into the
-// next one, the picture freezes for the difference.
+// `coanda subtitles` (mode "silent") makes the draft: no audio, each line shown as a subtitle
+// for as long as it should take to say. `coanda voice` (modes "plan" and "pass") is the voice
+// pass the reviewer asks for at the end: "plan" says what it would record and cost, "pass"
+// records each line, keeping any recording already made of the same words. Where a line runs
+// into the next one, the picture freezes for the difference.
 //
 // It writes, beside the output video: `<name>.srt`, `<name>.timeline.json` (the timeline moved
-// past the freezes) and `<name>.voice.json` (each line, and the lines still unvoiced).
+// past the freezes) and `<name>.voice.json` (each line, and any still without a recording).
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, parse, resolve } from "node:path";
 import type { Timeline, UnvoicedLine } from "../shared/types.ts";
@@ -42,7 +43,7 @@ export interface VoiceSettings {
   language?: string;
 }
 
-export type VoiceMode = "reuse" | "pass" | "plan";
+export type VoiceMode = "silent" | "pass" | "plan";
 
 /** What `<name>.voice.json` holds. */
 export interface VoiceReport {
@@ -55,7 +56,10 @@ export interface VoiceReport {
     recording: string | null;
   }[];
   holds: Hold[];
+  /** Lines with no recording in a voiced video. Empty for a silent draft, which has none by
+   * design. */
   unvoiced: UnvoicedLine[];
+  silent: boolean;
 }
 
 /** What a voice pass would record, and what it would cost. */
@@ -105,7 +109,12 @@ export async function voice(opts: {
   const cacheDir = resolve(projectDir, settings.cache ?? "voice-cache");
   const cache = readCache(cacheDir);
   const perWord = settings.secondsPerWord ?? DEFAULT_SECONDS_PER_WORD;
-  const found = lines.map((l) => findRecording(cache, l.text, settings.voiceId, settings.model));
+  // A silent draft uses no recordings, even ones already made.
+  const found = lines.map((l) =>
+    opts.mode === "silent"
+      ? undefined
+      : findRecording(cache, l.text, settings.voiceId, settings.model),
+  );
 
   if (opts.mode === "plan") {
     const missing = lines.filter((_, i) => !found[i]);
@@ -177,13 +186,15 @@ export async function voice(opts: {
       recording: l.audio ?? null,
     })),
     holds: plan.holds,
-    unvoiced: unvoicedLines(plan.lines),
+    unvoiced: opts.mode === "silent" ? [] : unvoicedLines(plan.lines),
+    silent: opts.mode === "silent",
   };
   writeFileSync(outTimeline, JSON.stringify(shiftTimeline(timeline, plan.shift), null, 1));
   writeFileSync(join(o.dir, `${o.name}.voice.json`), JSON.stringify(report, null, 1));
   log(
-    `${out} (${plan.seconds.toFixed(2)} s): ${lines.length} lines, ` +
-      `${report.unvoiced.length} unvoiced, ${plan.holds.length} freezes`,
+    `${out} (${plan.seconds.toFixed(2)} s): ${lines.length} lines` +
+      (report.silent ? " as subtitles, silent" : `, ${report.unvoiced.length} unvoiced`) +
+      `, ${plan.holds.length} freezes`,
   );
   return report;
 }

@@ -384,6 +384,9 @@ Each part below is marked with how sure I am of it:
 
 - **The picture only, with nothing drawn on it.** Two ways to capture:
   - CDP screenshots at the emulated screen size and scale, three requests in flight, about 25 fps, each frame stamped with its time. **[seen]**
+
+    While screenshots are being taken at a device scale other than 1, the page reads each mouse move divided by the scale: at 1.5, pointing at Edit lit up Collections. The recorder multiplies mouse positions by the scale while capturing, and only then. **[seen]**, in this video's `recorder.mjs`.
+
   - Screen capture of the app's window with the system pointer hidden (`ddagrab`, `draw_mouse=0`). This also covers native dialogs that CDP can't see. **[main pipeline]**
 
   The recipe picks one: `capture.method`.
