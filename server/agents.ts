@@ -5,7 +5,7 @@
 // saved, so after a restart `--resume` picks the same conversation back up.
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { validSegments } from "./timeMap.ts";
 import type {
@@ -22,19 +22,29 @@ import type {
  * session starts, so edits to it reach the next session without rebuilding anything. */
 const GUIDANCE_FILE = fileURLToPath(new URL("../agent/guidance.md", import.meta.url));
 
+const COANDA_DIR = fileURLToPath(new URL("..", import.meta.url))
+  .replaceAll("\\", "/")
+  .replace(/\/$/, "");
+
+/** Whether Coanda runs from its source, where its developer works on it, or is just installed. */
+function coandaSituation(): string {
+  return existsSync(join(COANDA_DIR, ".git"))
+    ? `Coanda is running from its source code, a git checkout at ${COANDA_DIR}. Its developer ` +
+        `works on it with Claude Code, in sessions named after the folder ` +
+        `("${basename(COANDA_DIR)}-…").`
+    : "Coanda is installed here, not run from its source: nobody on this machine works on " +
+        "Coanda's code, so there is no session to send Coanda's problems to.";
+}
+
 function guidance(): string {
   try {
     // `<coanda>` in the guidance stands for the Coanda folder and `<node>` for the Node that
     // runs Coanda, so it can name Coanda's commands. Coanda needs a newer Node than a project's
     // PATH may find.
-    return readFileSync(GUIDANCE_FILE, "utf8")
-      .replaceAll(
-        "<coanda>",
-        fileURLToPath(new URL("..", import.meta.url))
-          .replaceAll("\\", "/")
-          .replace(/\/$/, ""),
-      )
+    const text = readFileSync(GUIDANCE_FILE, "utf8")
+      .replaceAll("<coanda>", COANDA_DIR)
       .replaceAll("<node>", process.execPath.replaceAll("\\", "/"));
+    return `${text}\n\n## Where you are\n\n${coandaSituation()}`;
   } catch {
     return FALLBACK_GUIDANCE;
   }

@@ -17,6 +17,31 @@ of change has to redo. Read it. If it is missing or empty, or something in it is
 it out (ask the reviewer if you can't). If you had to work out the build, write it into
 `video-project.json` so the next session doesn't have to.
 
+## Fix the tools you use
+
+When a skill or tool you're using gets something wrong, or leaves out what you had to work
+out, get it fixed as soon as you've found the answer, not later: the next session reads the
+tool, not your messages. Who fixes it depends on who is around. "Where you are", at the end of
+these instructions, says whether Coanda runs from its source, and the project's instructions
+say whether its Bloom is a source checkout. ListAgents (load it with ToolSearch if it's
+deferred) lists the other Claude Code sessions on this machine, named after the folder they
+work in; look each time, since they come and go.
+
+- **Coanda** (its commands, the recorder, these instructions). When Coanda runs from its
+  source, a session named after Coanda's folder is Claude working on Coanda with its
+  developer, and glad to work with you on it. Send it the problem and what you worked out,
+  with SendMessage, and leave the fix to it: don't edit Coanda yourself. If there are
+  several, send it to each. If there is none, or Coanda is installed, say the problem in a
+  line in your message, so the reviewer can pass it on.
+- **Bloom's skills** (`run-bloom` and the others under `.claude/skills` in the project's
+  Bloom worktree). If a session is working in that worktree, send it the fix rather than
+  editing files it's working on. If not, fix the skill yourself: only what you learned, in
+  the skill's own style, left uncommitted for the reviewer. If the project has no Bloom
+  worktree, the reviewer runs an installed Bloom and has no skills to fix: say the problem
+  in a line.
+
+Either way, say in a line in your message what you fixed or sent, and to whom.
+
 ## Say what you're doing
 
 The reviewer watches your messages in Coanda's chat while you work. When a message or a send

@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import type { AgentState, ClaudeAuth } from "../../shared/types.ts";
+import type { AgentMessage, AgentState, ClaudeAuth } from "../../shared/types.ts";
 import { usePastedImages } from "../pastedImages.ts";
 import { AgentStatusBadge } from "./AgentStatusBadge.tsx";
-import { SendIcon } from "./icons.tsx";
+import { ChevronIcon, SendIcon } from "./icons.tsx";
 import { Linkify, Markdown } from "./Linkify.tsx";
 import { Thumbs } from "./PastedImages.tsx";
 import { SessionMeter } from "./SessionMeter.tsx";
@@ -33,6 +33,8 @@ export function AgentPanel(props: Props) {
   const { project, state, auth, onMessage, onStop, onLogin } = props;
   const [text, setText] = useState("");
   const pasted = usePastedImages();
+  // Runs of tool calls the reviewer opened or closed, by the index of their first call.
+  const [toolsOpen, setToolsOpen] = useState<Map<number, boolean>>(new Map());
   const listRef = useRef<HTMLDivElement>(null);
   const status = state?.status ?? "idle";
   const count = state?.messages.length ?? 0;
@@ -122,19 +124,32 @@ export function AgentPanel(props: Props) {
       ) : (
         <>
           <div className="agent-log" ref={listRef} data-testid="agent-log">
-            {state?.messages.map((m, i) => (
-              <div
-                key={i}
-                className={`agent-msg ${m.role}${m.role === "user" ? " chat-human" : m.role === "assistant" ? " chat-ai" : ""}`}
-              >
-                {m.role === "assistant" ? (
-                  <Markdown text={m.text} onOpenPath={props.onOpenPath} />
-                ) : (
-                  <Linkify text={m.text} onOpenPath={props.onOpenPath} />
-                )}
-                {m.images && <Thumbs saved={m.images} onOpen={props.onOpenPath} />}
-              </div>
-            ))}
+            {groupTools(state?.messages ?? []).map((g, i, all) =>
+              g.tools ? (
+                <ToolRun
+                  key={g.start}
+                  tools={g.tools}
+                  latest={i === all.length - 1}
+                  open={toolsOpen.get(g.start)}
+                  onToggle={(open) => setToolsOpen((prev) => new Map(prev).set(g.start, open))}
+                  onOpenPath={props.onOpenPath}
+                />
+              ) : (
+                <div
+                  key={g.start}
+                  className={`agent-msg ${g.message.role}${g.message.role === "user" ? " chat-human" : g.message.role === "assistant" ? " chat-ai" : ""}`}
+                >
+                  {g.message.role === "assistant" ? (
+                    <Markdown text={g.message.text} onOpenPath={props.onOpenPath} />
+                  ) : (
+                    <Linkify text={g.message.text} onOpenPath={props.onOpenPath} />
+                  )}
+                  {g.message.images && (
+                    <Thumbs saved={g.message.images} onOpen={props.onOpenPath} />
+                  )}
+                </div>
+              ),
+            )}
           </div>
           <div className="agent-status">
             <AgentStatusBadge status={status} />
@@ -201,5 +216,51 @@ function Elapsed({ since }: { since: string }) {
     <span className="elapsed mono" data-testid="elapsed">
       {text}
     </span>
+  );
+}
+
+type Group =
+  | { start: number; tools: AgentMessage[]; message?: undefined }
+  | { start: number; message: AgentMessage; tools?: undefined };
+
+/** The messages, with each run of consecutive tool calls gathered into one group. */
+function groupTools(messages: AgentMessage[]): Group[] {
+  const groups: Group[] = [];
+  messages.forEach((m, i) => {
+    const last = groups[groups.length - 1];
+    if (m.role !== "tool") groups.push({ start: i, message: m });
+    else if (last?.tools) last.tools.push(m);
+    else groups.push({ start: i, tools: [m] });
+  });
+  return groups;
+}
+
+/** A run of tool calls: open while it's the latest thing in the chat, closed once Claude says
+ * something after it, unless the reviewer opened or closed it. */
+function ToolRun(props: {
+  tools: AgentMessage[];
+  latest: boolean;
+  open: boolean | undefined;
+  onToggle: (open: boolean) => void;
+  onOpenPath: (path: string) => void;
+}) {
+  const open = props.open ?? props.latest;
+  return (
+    <div className="agent-tools">
+      <button
+        className="agent-tools-toggle"
+        aria-expanded={open}
+        onClick={() => props.onToggle(!open)}
+      >
+        <ChevronIcon size={12} open={open} />
+        {props.tools.length} {props.tools.length === 1 ? "tool call" : "tool calls"}
+      </button>
+      {open &&
+        props.tools.map((m, i) => (
+          <div key={i} className="agent-msg tool">
+            <Linkify text={m.text} onOpenPath={props.onOpenPath} />
+          </div>
+        ))}
+    </div>
   );
 }

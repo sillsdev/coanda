@@ -977,6 +977,30 @@
   color: #d4e0f8;
 }
 
+.agent-tools {
+  display: flex;
+  flex-direction: column;
+  gap: inherit;
+  margin-top: -4px;
+}
+
+.agent-tools-toggle {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 11.5px;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+
+.agent-tools-toggle:hover {
+  color: var(--text-dim);
+}
+
 .agent-msg.tool {
   font: 11.5px/1.4 var(--font-mono);
   color: var(--text-faint);

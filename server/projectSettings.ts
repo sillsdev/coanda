@@ -2,7 +2,7 @@
 // which Bloom worktree its Claude session drives. Kept in ~/.coanda/projects.json, keyed by
 // the project folder's absolute path.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import type { ProjectSettings } from "../shared/types.ts";
 import type { ProjectLaunch } from "./agents.ts";
 
@@ -45,6 +45,15 @@ Bloom only from there, with its run-bloom skill: read ${bloom}/.claude/skills/ru
 (and ${bloom}/AGENTS.md for building) before starting Bloom. Other worktrees may have their own
 Bloom running at the same time, so never assume port 8089 or any fixed port: take httpPort and
 cdpPort from \`node .claude/skills/run-bloom/launcherControl.mjs --status --json\` run in that
-worktree, and never stop a Bloom that another worktree started.`,
+worktree, and never stop a Bloom that another worktree started.
+
+${
+  existsSync(join(bloom, ".git"))
+    ? `That worktree is a git checkout of Bloom's source, so the reviewer develops Bloom: its
+skills are yours to fix, as "Fix the tools you use" says. Sessions working in it are named
+after its folder ("${basename(bloom)}-…").`
+    : `That folder is not a git checkout, so its skills can't be fixed there: say a problem
+with them in a line instead.`
+}`,
   };
 }
