@@ -133,7 +133,7 @@ test("write a brief, paste screenshots into it, comment on it, and answer Claude
     expect(await highlighted(page)).toEqual({ other: 0, active: 1 });
 
     // Send it: Claude gets the passage, the comment and the screenshot's path.
-    await expect(page.getByTestId("send")).toHaveText("Send 1 to Chat");
+    await expect(page.getByTestId("send")).toHaveText("Send 1 to Claude");
     await page.getByTestId("send").click();
     await expect(card).toHaveAttribute("data-status", "replied");
     // The chat shows what was sent as the conversation it is, not a count.
@@ -363,7 +363,7 @@ test("Claude's questions each get a card to answer, and the answers go with Send
     await expect(second.locator(".chat-human")).toHaveText("Spanish");
 
     // The answers go to Claude with Send, and the cards are done.
-    await expect(page.getByTestId("send")).toHaveText("Send 2 to Chat");
+    await expect(page.getByTestId("send")).toHaveText("Send 2 to Claude");
     await page.getByTestId("send").click();
     await expect(first).toHaveCount(0);
     await expect.poll(lastMessage).toContain('"answer": "Spanish"');

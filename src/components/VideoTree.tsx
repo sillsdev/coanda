@@ -1,9 +1,18 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { isDocument } from "../format.ts";
 import type { TreeNode } from "../../shared/types.ts";
 import { AgentStatusBadge } from "./AgentStatusBadge.tsx";
 import { FolderPicker } from "./FolderPicker.tsx";
-import { ChevronIcon, FileIcon, FolderIcon, PlayIcon } from "./icons.tsx";
+import {
+  CheckIcon,
+  ChevronIcon,
+  FileIcon,
+  FolderIcon,
+  PencilIcon,
+  PlayIcon,
+  ProjectFolderIcon,
+  TrashIcon,
+} from "./icons.tsx";
 
 interface Props {
   rootName: string;
@@ -20,6 +29,10 @@ interface Props {
   onReveal: (path: string) => void;
   /** Opens a file in its default app. */
   onOpen: (path: string) => void;
+  /** Renames a file within its folder. */
+  onRename: (path: string, name: string) => Promise<void>;
+  /** Moves a file to the Recycle Bin. */
+  onDelete: (path: string) => void;
 }
 
 function hasVideo(node: TreeNode): boolean {
@@ -36,6 +49,8 @@ export function VideoTree(props: Props) {
   // Folders the user has opened or closed, away from how they start out.
   const [toggled, setToggled] = useState<Set<string>>(new Set());
   const [menu, setMenu] = useState<{ x: number; y: number; node: TreeNode } | null>(null);
+  // The file whose name is being edited.
+  const [renaming, setRenaming] = useState<string | null>(null);
 
   useEffect(() => {
     if (!menu) return;
@@ -153,7 +168,11 @@ export function VideoTree(props: Props) {
                   ) : (
                     <span className="tree-icon-space" />
                   )}
-                  <FolderIcon className="tree-icon muted" />
+                  {node.project ? (
+                    <ProjectFolderIcon className="tree-icon go" />
+                  ) : (
+                    <FolderIcon className="tree-icon muted" />
+                  )}
                 </>
               ) : node.step ? (
                 <span className="tree-step" aria-label={`Step ${node.step}`}>
@@ -166,7 +185,18 @@ export function VideoTree(props: Props) {
               ) : (
                 <PlayIcon className="tree-icon accent" />
               )}
-              <span className="tree-label">{node.name}</span>
+              {renaming === node.path ? (
+                <RenameField
+                  name={node.name}
+                  onDone={async (name) => {
+                    if (name !== null && name !== node.name) await props.onRename(node.path, name);
+                    setRenaming(null);
+                  }}
+                />
+              ) : (
+                <span className="tree-label">{node.name}</span>
+              )}
+              {node.approved && <CheckIcon className="tree-approved" size={13} />}
               {node.project && node.agentStatus && (
                 <AgentStatusBadge status={node.agentStatus} withLabel={false} />
               )}
@@ -210,8 +240,71 @@ export function VideoTree(props: Props) {
               Make project here
             </button>
           )}
+          {menu.node.kind !== "folder" && (
+            <>
+              <button
+                role="menuitem"
+                onClick={() => {
+                  setRenaming(menu.node.path);
+                  setMenu(null);
+                }}
+              >
+                <PencilIcon size={13} />
+                Rename
+              </button>
+              <button
+                role="menuitem"
+                className="danger"
+                onClick={() => {
+                  props.onDelete(menu.node.path);
+                  setMenu(null);
+                }}
+              >
+                <TrashIcon />
+                Delete File
+              </button>
+            </>
+          )}
         </div>
       )}
     </aside>
+  );
+}
+
+/** Edits a file's name in place: Enter or leaving the field keeps it, Escape cancels. The part
+ * before the extension starts selected. */
+function RenameField({
+  name,
+  onDone,
+}: {
+  name: string;
+  onDone: (name: string | null) => Promise<void>;
+}) {
+  const [value, setValue] = useState(name);
+  const done = useRef(false);
+  const finish = (result: string | null) => {
+    if (done.current) return;
+    done.current = true;
+    void onDone(result?.trim() || null);
+  };
+  return (
+    <input
+      className="tree-rename"
+      value={value}
+      autoFocus
+      onFocus={(e) => {
+        const dot = name.lastIndexOf(".");
+        e.currentTarget.setSelectionRange(0, dot > 0 ? dot : name.length);
+      }}
+      onChange={(e) => setValue(e.target.value)}
+      onClick={(e) => e.stopPropagation()}
+      onDoubleClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => {
+        e.stopPropagation();
+        if (e.key === "Enter") finish(value);
+        if (e.key === "Escape") finish(null);
+      }}
+      onBlur={() => finish(value)}
+    />
   );
 }

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { avatarColor, initials } from "../format.ts";
+import { Avatar } from "./Avatar.tsx";
 
 interface Props {
   rootName: string;
@@ -28,14 +28,7 @@ export function Header({ rootName, video, reviewers, children }: Props) {
         <div className="reviewers">
           <div className="avatar-stack">
             {reviewers.map((name) => (
-              <span
-                key={name}
-                className="avatar"
-                title={name}
-                style={{ background: avatarColor(name) }}
-              >
-                {initials(name)}
-              </span>
+              <Avatar key={name} name={name} />
             ))}
           </div>
         </div>

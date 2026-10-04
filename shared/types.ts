@@ -96,6 +96,73 @@ export interface AnnotationFile {
  */
 export interface Timeline {
   anchors: { key: string; t: number; say?: string }[];
+  /** Highlights drawn over the picture when the draft is made, not recorded in it. */
+  markings?: Marking[];
+  /** How markings look, unless a marking says otherwise. */
+  markingStyle?: MarkingStyle;
+  /** Where the pointer was, sampled as it moved, in the picture's pixels and seconds. */
+  pointer?: PointerSample[];
+  /** Each click, where the pointer was when it happened. */
+  presses?: PointerSample[];
+  /** When each key was typed, in the picture's seconds. */
+  keys?: number[];
+}
+
+export interface PointerSample {
+  t: number;
+  x: number;
+  y: number;
+}
+
+/**
+ * Something drawn over the picture when the draft is made, in the picture's pixels and seconds.
+ * - `box`: a highlight box around x, y, width, height. It starts to fade in at `from` and to fade
+ *   out at `to`.
+ * - `arrow`: an arrow beside the box x, y, width, height, on its `side`, pointing at it. It slides
+ *   in toward the box from `from` and fades out at `to`.
+ * - `dissolve`: inside x, y, width, height, the frame just before `from` fades away over the live
+ *   picture until `to`, so what appeared there at once (a paste) dissolves in.
+ */
+export interface Marking {
+  key: string;
+  kind: "box" | "arrow" | "dissolve";
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  from: number;
+  to: number;
+  /** For an arrow: which side of the box it sits on. */
+  side?: "left" | "right" | "above" | "below";
+  style?: MarkingStyle;
+}
+
+/** Sizes are in layout pixels, which `scale` turns into the picture's pixels. */
+export interface MarkingStyle {
+  /** Picture pixels per layout pixel, such as 1.5 for a page laid out at 1024x768 and captured
+   * at 1536x1152. */
+  scale?: number;
+  /** A CSS hex colour, such as "#ffb627". */
+  color?: string;
+  border?: number;
+  radius?: number;
+  /** A faint band just outside the border. */
+  ring?: number;
+  ringOpacity?: number;
+  /** A soft glow outside the box, as a CSS box-shadow's blur. */
+  glow?: number;
+  glowOpacity?: number;
+  /** Seconds to fade in, and to fade out. */
+  fade?: number;
+  /** How much bigger the box starts, and ends, while fading: 0.06 is 6%. */
+  grow?: number;
+  /** An arrow's length from tail to tip, and the width of its head. */
+  arrowLength?: number;
+  arrowWidth?: number;
+  /** How far an arrow stands off from the box it points at. */
+  arrowGap?: number;
+  /** How far an arrow slides in. */
+  arrowSlide?: number;
 }
 
 /** A stretch of the previous render and where it is in the new one, in seconds. Anything in
@@ -144,6 +211,8 @@ export interface TreeNode {
   agentStatus?: AgentStatus;
   /** A project's planning document: its step number, from 1. */
   step?: number;
+  /** A document the reviewer approved, unchanged since. */
+  approved?: boolean;
 }
 
 /**
@@ -175,6 +244,8 @@ export interface AgentState {
   limits?: UsageLimits;
   /** While working: when the work started, for showing how long it has taken. */
   workingSince?: string;
+  /** While working: the work is Claude Code's /compact. */
+  compacting?: boolean;
 }
 
 export interface UsageWindow {
@@ -211,6 +282,8 @@ export interface ServerInfo {
   root: string | null;
   rootName: string;
   user: string;
+  /** Picture URLs by person's name. */
+  avatars: Record<string, string>;
   /** Folders reviewed recently, most recent first. */
   recent: string[];
 }

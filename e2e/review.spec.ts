@@ -142,7 +142,7 @@ test("annotate videos, send them to Claude, and see Claude's replies", async ({ 
   await openVideo(page, "getting-started/first-project.webm");
   await seekTo(page, 0.5);
   await addPin(page, 50, 50, "Hold on this slide a second longer.");
-  await expect(page.getByTestId("send")).toHaveText("Send 3 to Chat");
+  await expect(page.getByTestId("send")).toHaveText("Send 3 to Claude");
   await expect(page.locator('[data-path="getting-started/welcome.webm"] .count-badge')).toHaveText(
     "2",
   );
@@ -165,7 +165,7 @@ test("annotate videos, send them to Claude, and see Claude's replies", async ({ 
     expect(existsSync(a.frameFile!)).toBe(true);
   }
   await expect(page.getByTestId("card-1")).toHaveAttribute("data-status", "sent");
-  await expect(page.getByTestId("send")).toHaveText("Send to Chat");
+  await expect(page.getByTestId("send")).toHaveText("Send to Claude");
   await expect(page.getByTestId("send")).toBeDisabled();
   expect(await (await fetch(`http://127.0.0.1:${port}/api/status`)).json()).toMatchObject({
     undelivered: 0,
@@ -205,7 +205,7 @@ test("annotate videos, send them to Claude, and see Claude's replies", async ({ 
   await page.getByPlaceholder("Reply to Claude…").press("Enter");
   await expect(page.getByTestId("card-2")).toHaveAttribute("data-status", "open");
   await expect(page.getByTestId("card-2")).toContainText("Close, but a touch darker please.");
-  await expect(page.getByTestId("send")).toHaveText("Send 1 to Chat");
+  await expect(page.getByTestId("send")).toHaveText("Send 1 to Claude");
 
   // …and resolves the other.
   await page.getByTestId("card-1").getByRole("button", { name: "Resolve" }).click();

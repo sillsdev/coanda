@@ -152,7 +152,7 @@ export function AgentPanel(props: Props) {
             )}
           </div>
           <div className="agent-status">
-            <AgentStatusBadge status={status} />
+            <AgentStatusBadge status={status} compacting={state?.compacting} />
             {status === "working" && state?.workingSince && <Elapsed since={state.workingSince} />}
             {status === "working" && (
               <button className="link-btn small-btn push-right" onClick={onStop}>

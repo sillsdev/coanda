@@ -12,18 +12,22 @@ const LABELS: Record<AgentStatus, string> = {
 export function AgentStatusBadge({
   status,
   withLabel = true,
+  compacting = false,
 }: {
   status: AgentStatus;
   withLabel?: boolean;
+  /** Working on Claude Code's /compact. */
+  compacting?: boolean;
 }) {
+  const label = status === "working" && compacting ? "Compacting" : LABELS[status];
   return (
     <span
       className={`agent-badge ${status}`}
       data-status={status}
-      title={withLabel ? undefined : LABELS[status]}
+      title={withLabel ? undefined : label}
     >
       <span className="agent-dot">{status === "question" && "?"}</span>
-      {withLabel && LABELS[status]}
+      {withLabel && label}
     </span>
   );
 }

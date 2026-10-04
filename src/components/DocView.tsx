@@ -12,12 +12,12 @@ import {
 } from "react";
 import type { Annotation, DocText, PlanningStep } from "../../shared/types.ts";
 import { api, mediaUrl, type NewAnnotation } from "../api.ts";
-import { avatarColor, initials } from "../format.ts";
 import { usePastedImages } from "../pastedImages.ts";
 import { findQuote, quoteAt, rangeAt, rangeOffsets } from "../textQuote.ts";
 import { CheckIcon, CommentIcon } from "./icons.tsx";
 import { Markdown } from "./Linkify.tsx";
 import { Thumbs } from "./PastedImages.tsx";
+import { Avatar } from "./Avatar.tsx";
 
 /** How long typing pauses before an edit is saved. */
 const SAVE_AFTER_MS = 700;
@@ -406,9 +406,7 @@ export function DocView(props: Props) {
               onClick={(e) => e.stopPropagation()}
             >
               <div className="draft-head">
-                <span className="avatar small" style={{ background: avatarColor(me) }}>
-                  {initials(me)}
-                </span>
+                <Avatar name={me} className="small" />
                 <span className="draft-name">{me}</span>
               </div>
               <textarea

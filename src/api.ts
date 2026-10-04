@@ -87,10 +87,9 @@ export const api = {
   remove: (video: string, id: number) =>
     post<Annotation[]>(`/api/annotations/${id}/delete?${q(video)}`),
   /** With a project, its open annotations go to the project's Claude session. */
-  send: (project?: string | null, planApproval = false) =>
+  send: (project?: string | null) =>
     post<{ sent: number }>(
       project == null ? "/api/send" : `/api/send?project=${encodeURIComponent(project)}`,
-      { planApproval },
     ),
   /** Asks the project's session to record the video's missing voice, plan first. */
   voicePass: (project: string, video: string) =>
@@ -104,6 +103,9 @@ export const api = {
     post<AgentState>(`/api/agent/message?${p(project)}`, { text, images }),
   doc: (doc: string) => request<DocText>(`/api/doc?${q(doc)}`),
   questions: (project: string) => request<AgentQuestion[]>(`/api/questions?${p(project)}`),
+  /** Removes one of Claude's questions from the list. */
+  deleteQuestion: (project: string, id: number) =>
+    post<AgentQuestion[]>(`/api/questions/${id}/delete?${p(project)}`, {}),
   /** Answers one of Claude's questions; an empty answer takes the answer back. */
   answer: (project: string, id: number, text: string) =>
     post<AgentQuestion[]>(`/api/questions/${id}/answer?${p(project)}`, { text }),
@@ -139,6 +141,8 @@ export const api = {
   claudeAuth: () => request<ClaudeAuth>("/api/claude-auth"),
   /** Shows a path in the reviewed folder, selected, in File Explorer. */
   reveal: (path: string) => post<{ path: string }>("/api/reveal", { path }),
+  rename: (path: string, name: string) => post<{ path: string }>("/api/rename", { path, name }),
+  deleteFile: (path: string) => post<{ ok: true }>("/api/delete", { path }),
   /** Opens a file or folder with its default app; a relative path is tried against the
    * reviewed folder, then the project's folders. */
   openPath: (path: string, project?: string | null) =>

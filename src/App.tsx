@@ -11,6 +11,7 @@ import type {
   VideoInfo,
 } from "../shared/types.ts";
 import { api, mediaUrl, subscribe, subtitleUrl, type SavedKeys } from "./api.ts";
+import { AvatarsContext } from "./avatars.ts";
 import { AgentPanel } from "./components/AgentPanel.tsx";
 import { AnnotationList } from "./components/AnnotationList.tsx";
 import { DocView, type DocViewHandle } from "./components/DocView.tsx";
@@ -81,13 +82,6 @@ function App() {
       return localStorage.getItem("coanda.subtitles") !== "off";
     } catch {
       return true;
-    }
-  });
-  const [planApproval, setPlanApproval] = useState(() => {
-    try {
-      return localStorage.getItem("coanda.planApproval") === "on";
-    } catch {
-      return false;
     }
   });
   const [leftWidth, setLeftWidth] = useSidebarWidth("left");
@@ -340,215 +334,230 @@ function App() {
   if (!info) return null;
 
   return (
-    <div className="app">
-      <Header rootName={info.rootName} video={video} reviewers={reviewers}>
-        <Settings
-          saved={keys}
-          onSaveKey={async (which, key) => setKeys(await api.saveKey(which, key))}
-        />
-      </Header>
-      <div
-        className="columns"
-        style={{
-          gridTemplateColumns: `${leftWidth}px minmax(0, 1fr) ${rightWidth}px ${agentWidth}px`,
-        }}
-      >
-        <Splitter side="left" offset={leftWidth} width={leftWidth} onResize={setLeftWidth} />
-        <Splitter
-          side="right"
-          offset={rightWidth + agentWidth}
-          width={rightWidth}
-          onResize={setRightWidth}
-        />
-        <Splitter side="right" offset={agentWidth} width={agentWidth} onResize={setAgentWidth} />
-        <VideoTree
-          rootName={info.rootName}
-          rootPath={info.root}
-          recent={info.recent}
-          onBrowse={async () => {
-            const { picked, info: next } = await api.pickFolder();
-            if (!picked) return;
-            showFolder(next);
-            setTree(await api.tree());
-          }}
-          onChooseRoot={async (path) => {
-            showFolder(await api.setRoot(path));
-            setTree(await api.tree());
-          }}
-          tree={tree}
-          selected={selectedFolder ?? video}
-          onSelect={chooseVideo}
-          onSelectFolder={setSelectedFolder}
-          onMakeProject={(folder) => void run(makeProject(folder))}
-          onReveal={(path) => void run(api.reveal(path))}
-          onOpen={openPath}
-        />
-        {project != null && selectedFolder === project ? (
-          <ProjectHome
-            project={project || info.rootName}
-            steps={steps}
-            onOpen={(step) => chooseVideo(step.path)}
-            onStart={startStep}
-            draftRequested={draftRequested}
-            onMakeDraft={makeDraft}
+    <AvatarsContext.Provider value={info.avatars}>
+      <div className="app">
+        <Header rootName={info.rootName} video={video} reviewers={reviewers}>
+          <Settings
+            saved={keys}
+            onSaveKey={async (which, key) => setKeys(await api.saveKey(which, key))}
           />
-        ) : video && node && isDocument(video) ? (
-          <DocView
-            key={video}
-            path={video}
-            version={docVersion}
-            annotations={annotations}
-            activeId={activeId}
-            showResolved={showResolved}
-            me={info.user}
-            ref={docRef}
-            onSelect={select}
-            onDeselect={() => setActiveId(null)}
-            onCreate={async (draft) => {
-              const created = await api.create(video, draft);
-              setAnnotations((list) => [...list.filter((a) => a.id !== created.id), created]);
-              setActiveId(created.id);
+        </Header>
+        <div
+          className="columns"
+          style={{
+            gridTemplateColumns: `${leftWidth}px minmax(0, 1fr) ${rightWidth}px ${agentWidth}px`,
+          }}
+        >
+          <Splitter side="left" offset={leftWidth} width={leftWidth} onResize={setLeftWidth} />
+          <Splitter
+            side="right"
+            offset={rightWidth + agentWidth}
+            width={rightWidth}
+            onResize={setRightWidth}
+          />
+          <Splitter side="right" offset={agentWidth} width={agentWidth} onResize={setAgentWidth} />
+          <VideoTree
+            rootName={info.rootName}
+            rootPath={info.root}
+            recent={info.recent}
+            onBrowse={async () => {
+              const { picked, info: next } = await api.pickFolder();
+              if (!picked) return;
+              showFolder(next);
+              setTree(await api.tree());
             }}
-            onOpenPath={openPath}
-            onError={showError}
-            step={steps.find((s) => s.path === video)}
-            nextStep={steps[steps.findIndex((s) => s.path === video) + 1]}
-            isLastStep={steps.at(-1)?.path === video}
-            draftRequested={draftRequested}
-            onMakeDraft={makeDraft}
-            onNextStep={(next) => (next.started ? chooseVideo(next.path) : startStep(next))}
-            onApprove={(approved) =>
+            onChooseRoot={async (path) => {
+              showFolder(await api.setRoot(path));
+              setTree(await api.tree());
+            }}
+            tree={tree}
+            selected={selectedFolder ?? video}
+            onSelect={chooseVideo}
+            onSelectFolder={setSelectedFolder}
+            onMakeProject={(folder) => void run(makeProject(folder))}
+            onReveal={(path) => void run(api.reveal(path))}
+            onOpen={openPath}
+            onRename={async (path, name) => {
+              await run(
+                api.rename(path, name).then((r) => {
+                  if (path === video) chooseVideo(r.path);
+                }),
+              );
+            }}
+            onDelete={(path) =>
               void run(
-                api.approve(video, approved).then(async () => {
-                  if (project != null) await loadSteps(project);
+                api.deleteFile(path).then(() => {
+                  if (path === video) {
+                    setVideo(undefined);
+                    setAnnotations([]);
+                    setVideoInfo(null);
+                    history.replaceState(null, "", location.pathname);
+                  }
                 }),
               )
             }
           />
-        ) : video && node ? (
-          <Player
-            key={video}
-            video={video}
-            src={mediaUrl(video, node.mtime)}
+          {project != null && selectedFolder === project ? (
+            <ProjectHome
+              project={project || info.rootName}
+              steps={steps}
+              onOpen={(step) => chooseVideo(step.path)}
+              onStart={startStep}
+              draftRequested={draftRequested}
+              onMakeDraft={makeDraft}
+            />
+          ) : video && node && isDocument(video) ? (
+            <DocView
+              key={video}
+              path={video}
+              version={docVersion}
+              annotations={annotations}
+              activeId={activeId}
+              showResolved={showResolved}
+              me={info.user}
+              ref={docRef}
+              onSelect={select}
+              onDeselect={() => setActiveId(null)}
+              onCreate={async (draft) => {
+                const created = await api.create(video, draft);
+                setAnnotations((list) => [...list.filter((a) => a.id !== created.id), created]);
+                setActiveId(created.id);
+              }}
+              onOpenPath={openPath}
+              onError={showError}
+              step={steps.find((s) => s.path === video)}
+              nextStep={steps[steps.findIndex((s) => s.path === video) + 1]}
+              isLastStep={steps.at(-1)?.path === video}
+              draftRequested={draftRequested}
+              onMakeDraft={makeDraft}
+              onNextStep={(next) => (next.started ? chooseVideo(next.path) : startStep(next))}
+              onApprove={(approved) =>
+                void run(
+                  api.approve(video, approved).then(async () => {
+                    if (project != null) await loadSteps(project);
+                  }),
+                )
+              }
+            />
+          ) : video && node ? (
+            <Player
+              key={video}
+              video={video}
+              src={mediaUrl(video, node.mtime)}
+              annotations={annotations}
+              activeId={activeId}
+              showResolved={showResolved}
+              me={info.user}
+              ref={playerRef}
+              renderedAt={renderedAt}
+              unvoiced={videoInfo?.unvoiced ?? []}
+              onVoicePass={
+                project != null
+                  ? () => void run(api.voicePass(project, video).then(setAgent))
+                  : undefined
+              }
+              subtitles={(videoInfo?.subtitles ?? []).map(subtitleUrl)}
+              showSubtitles={showSubtitles}
+              onToggleSubtitles={() => {
+                const next = !showSubtitles;
+                setShowSubtitles(next);
+                try {
+                  localStorage.setItem("coanda.subtitles", next ? "on" : "off");
+                } catch {
+                  // Storage unavailable: the switch still works for this page.
+                }
+              }}
+              onSelect={select}
+              onDeselect={() => setActiveId(null)}
+              onCreate={async (draft) => {
+                const created = await api.create(video, draft);
+                setAnnotations((list) => [...list.filter((a) => a.id !== created.id), created]);
+                setActiveId(created.id);
+              }}
+            />
+          ) : (
+            <main className="player empty" />
+          )}
+          <AnnotationList
             annotations={annotations}
             activeId={activeId}
             showResolved={showResolved}
-            me={info.user}
-            ref={playerRef}
-            renderedAt={renderedAt}
-            unvoiced={videoInfo?.unvoiced ?? []}
-            onVoicePass={
-              project != null
-                ? () => void run(api.voicePass(project, video).then(setAgent))
-                : undefined
-            }
-            subtitles={(videoInfo?.subtitles ?? []).map(subtitleUrl)}
-            showSubtitles={showSubtitles}
-            onToggleSubtitles={() => {
-              const next = !showSubtitles;
-              setShowSubtitles(next);
-              try {
-                localStorage.setItem("coanda.subtitles", next ? "on" : "off");
-              } catch {
-                // Storage unavailable: the switch still works for this page.
-              }
-            }}
+            onToggleResolved={() => setShowResolved((s) => !s)}
             onSelect={select}
-            onDeselect={() => setActiveId(null)}
-            onCreate={async (draft) => {
-              const created = await api.create(video, draft);
-              setAnnotations((list) => [...list.filter((a) => a.id !== created.id), created]);
-              setActiveId(created.id);
+            onResolve={(a) => void run(api.resolve(video!, a.id).then(setAnnotations))}
+            onReopen={(a) => void run(api.reopen(video!, a.id).then(setAnnotations))}
+            onReply={async (a, text, images) => {
+              await run(api.reply(video!, a.id, text, images).then(setAnnotations));
             }}
-          />
-        ) : (
-          <main className="player empty" />
-        )}
-        <AnnotationList
-          annotations={annotations}
-          activeId={activeId}
-          showResolved={showResolved}
-          onToggleResolved={() => setShowResolved((s) => !s)}
-          onSelect={select}
-          onResolve={(a) => void run(api.resolve(video!, a.id).then(setAnnotations))}
-          onReopen={(a) => void run(api.reopen(video!, a.id).then(setAnnotations))}
-          onReply={async (a, text, images) => {
-            await run(api.reply(video!, a.id, text, images).then(setAnnotations));
-          }}
-          onEdit={async (a, change) => {
-            await run(api.edit(video!, a.id, change).then(setAnnotations));
-          }}
-          onDelete={(a) => {
-            if (activeId === a.id) setActiveId(null);
-            void run(api.remove(video!, a.id).then(setAnnotations));
-          }}
-          openTotal={openTotal}
-          onOpenPath={openPath}
-          questions={questions}
-          onAnswer={(q, text) =>
-            project != null && void run(api.answer(project, q.id, text).then(setQuestions))
-          }
-          planApproval={planApproval}
-          onPlanApproval={(on) => {
-            setPlanApproval(on);
-            try {
-              localStorage.setItem("coanda.planApproval", on ? "on" : "off");
-            } catch {
-              // Storage unavailable: the choice still applies to this page.
+            onEdit={async (a, change) => {
+              await run(api.edit(video!, a.id, change).then(setAnnotations));
+            }}
+            onDelete={(a) => {
+              if (activeId === a.id) setActiveId(null);
+              void run(api.remove(video!, a.id).then(setAnnotations));
+            }}
+            openTotal={openTotal}
+            onOpenPath={openPath}
+            questions={questions}
+            onAnswer={(q, text) =>
+              project != null && void run(api.answer(project, q.id, text).then(setQuestions))
             }
-          }}
-          onSend={() =>
-            void run(
-              api.send(project, planApproval).then(() => {
-                if (video) void loadAnnotations(video);
-                void api.tree().then(setTree);
-              }),
-            )
-          }
-        />
-        <AgentPanel
-          project={project}
-          onMakeProject={() => void run(makeProject(scope))}
-          bloom={bloom}
-          model={settings.model ?? ""}
-          effort={settings.effort ?? ""}
-          onModel={(model) =>
-            project != null &&
-            void run(api.setProjectSettings(project, { model }).then(setSettings))
-          }
-          onEffort={(effort) =>
-            project != null &&
-            void run(api.setProjectSettings(project, { effort }).then(setSettings))
-          }
-          onChooseBloom={() =>
-            project != null &&
-            void run(
-              api
-                .chooseBloom(project)
-                .then((r) => setSettings((s) => ({ ...s, bloom: r.bloom ?? undefined }))),
-            )
-          }
-          state={agent}
-          auth={auth}
-          onMessage={async (text, images) => {
-            if (project == null) return;
-            await run(api.agentMessage(project, text, images).then(setAgent));
-          }}
-          onStop={() => project != null && void run(api.agentStop(project).then(setAgent))}
-          onOpenPath={openPath}
-          onCompact={() => project != null && void run(api.agentCompact(project).then(setAgent))}
-          onLogin={() => void run(api.claudeLogin())}
-        />
-      </div>
-      {error && (
-        <div className="toast" role="alert" data-testid="toast">
-          <span>{error}</span>
-          <button className="toast-close" aria-label="Close" onClick={() => setError(null)}>
-            ×
-          </button>
+            onDeleteQuestion={(q) =>
+              project != null && void run(api.deleteQuestion(project, q.id).then(setQuestions))
+            }
+            onSend={() =>
+              void run(
+                api.send(project).then(() => {
+                  if (video) void loadAnnotations(video);
+                  void api.tree().then(setTree);
+                }),
+              )
+            }
+          />
+          <AgentPanel
+            project={project}
+            onMakeProject={() => void run(makeProject(scope))}
+            bloom={bloom}
+            model={settings.model ?? ""}
+            effort={settings.effort ?? ""}
+            onModel={(model) =>
+              project != null &&
+              void run(api.setProjectSettings(project, { model }).then(setSettings))
+            }
+            onEffort={(effort) =>
+              project != null &&
+              void run(api.setProjectSettings(project, { effort }).then(setSettings))
+            }
+            onChooseBloom={() =>
+              project != null &&
+              void run(
+                api
+                  .chooseBloom(project)
+                  .then((r) => setSettings((s) => ({ ...s, bloom: r.bloom ?? undefined }))),
+              )
+            }
+            state={agent}
+            auth={auth}
+            onMessage={async (text, images) => {
+              if (project == null) return;
+              await run(api.agentMessage(project, text, images).then(setAgent));
+            }}
+            onStop={() => project != null && void run(api.agentStop(project).then(setAgent))}
+            onOpenPath={openPath}
+            onCompact={() => project != null && void run(api.agentCompact(project).then(setAgent))}
+            onLogin={() => void run(api.claudeLogin())}
+          />
         </div>
-      )}
-    </div>
+        {error && (
+          <div className="toast" role="alert" data-testid="toast">
+            <span>{error}</span>
+            <button className="toast-close" aria-label="Close" onClick={() => setError(null)}>
+              ×
+            </button>
+          </div>
+        )}
+      </div>
+    </AvatarsContext.Provider>
   );
 }
 

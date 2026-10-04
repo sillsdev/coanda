@@ -5,6 +5,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  renameSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -64,6 +65,33 @@ export class Store {
 
   frameDir(video: string): string {
     return this.resolvePath(video) + ".coanda";
+  }
+
+  /** A file and Coanda's own files beside it: its annotations and saved frames. */
+  withSidecars(path: string): string[] {
+    return [this.resolvePath(path), this.annotationFilePath(path), this.frameDir(path)].filter(
+      (f) => existsSync(f),
+    );
+  }
+
+  /** Renames a file, and Coanda's files beside it, within its folder. Returns its new path. */
+  rename(path: string, name: string): string {
+    name = name.trim();
+    if (!name || /[\\/:*?"<>|]/.test(name) || name === "." || name === "..") {
+      throw new Error(`Not a usable file name: ${name}`);
+    }
+    const full = this.resolvePath(path);
+    const next = this.toRelative(join(dirname(full), name));
+    if (next === path) return path;
+    if (existsSync(this.resolvePath(next))) throw new Error(`${name} already exists`);
+    renameSync(full, this.resolvePath(next));
+    for (const [from, to] of [
+      [this.annotationFilePath(path), this.annotationFilePath(next)],
+      [this.frameDir(path), this.frameDir(next)],
+    ]) {
+      if (existsSync(from) && !existsSync(to)) renameSync(from, to);
+    }
+    return next;
   }
 
   read(video: string): AnnotationFile {
@@ -190,7 +218,10 @@ export class Store {
         const path = this.toRelative(full);
         const node: TreeNode = { name: entry.name, path, kind: "file", mtime };
         if (isDocument(entry.name) && existsSync(full + ".coanda.json")) {
-          const { annotations } = this.read(path);
+          const { annotations, approved } = this.read(path);
+          if (approved && mtime !== undefined && Math.abs(mtime - approved.mtime) <= 1) {
+            node.approved = true;
+          }
           node.unresolved = annotations.filter((a) => a.status !== "resolved").length;
           node.open = annotations.filter((a) => a.status === "open").length;
           node.sent = annotations.filter((a) => a.status === "sent").length;

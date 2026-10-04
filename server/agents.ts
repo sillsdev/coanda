@@ -82,6 +82,8 @@ interface Session {
   started?: number;
   /** When the session last went from not working to working. */
   workingSince?: string;
+  /** The turn running is Claude Code's /compact. */
+  compacting?: boolean;
   saveTimer?: ReturnType<typeof setTimeout>;
 }
 
@@ -167,6 +169,7 @@ export class AgentManager {
       contextWindow: s?.contextWindow,
       limits: this.limits,
       ...(s?.status === "working" && s.workingSince ? { workingSince: s.workingSince } : {}),
+      ...(s?.status === "working" && s.compacting ? { compacting: true } : {}),
     };
   }
 
@@ -199,6 +202,7 @@ export class AgentManager {
     if (!text.trimStart().startsWith("/")) s.sent = (s.sent ?? 0) + 1;
     if (s.status !== "working") s.workingSince = new Date().toISOString();
     s.status = "working";
+    s.compacting = text.trim() === "/compact";
     // On disk at once, so a Coanda stopped from now on knows to carry on with this turn.
     this.save();
     s.turnText = [];

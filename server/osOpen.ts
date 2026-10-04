@@ -1,5 +1,5 @@
 // Opens a file or folder the way double-clicking it would.
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { statSync } from "node:fs";
 import { dirname, extname } from "node:path";
 
@@ -65,4 +65,43 @@ function explorerSelect(full: string): void {
     stdio: "ignore",
     windowsVerbatimArguments: true,
   }).unref();
+}
+
+/** Moves a file or folder to the Recycle Bin (or the Trash), so a delete can be undone there. */
+export function osTrash(full: string): void {
+  const isDir = statSync(full).isDirectory();
+  let result;
+  if (process.platform === "win32") {
+    // The path goes in through the environment, so nothing in it is read as PowerShell.
+    const method = isDir ? "DeleteDirectory" : "DeleteFile";
+    result = spawnSync(
+      "powershell.exe",
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        "Add-Type -AssemblyName Microsoft.VisualBasic; " +
+          `[Microsoft.VisualBasic.FileIO.FileSystem]::${method}($env:COANDA_TRASH, 'OnlyErrorDialogs', 'SendToRecycleBin')`,
+      ],
+      { env: { ...process.env, COANDA_TRASH: full }, encoding: "utf8" },
+    );
+  } else if (process.platform === "darwin") {
+    result = spawnSync(
+      "osascript",
+      [
+        "-e",
+        "on run argv",
+        "-e",
+        'tell application "Finder" to delete POSIX file (item 1 of argv)',
+        "-e",
+        "end run",
+        full,
+      ],
+      { encoding: "utf8" },
+    );
+  } else {
+    result = spawnSync("gio", ["trash", full], { encoding: "utf8" });
+  }
+  if (result.error) throw result.error;
+  if (result.status !== 0) throw new Error(result.stderr.trim() || `Could not delete ${full}`);
 }

@@ -13,6 +13,7 @@ import {
   type FSWatcher,
 } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { createHash } from "node:crypto";
 import { userInfo } from "node:os";
 import { dirname, extname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -34,7 +35,7 @@ import type {
 import { defaultConfigFile, loadConfig, saveConfig, withRoot } from "./config.ts";
 import { AgentManager } from "./agents.ts";
 import { credits as openRouterCredits } from "../toolkit/openrouter.ts";
-import { osOpen, osReveal } from "./osOpen.ts";
+import { osOpen, osReveal, osTrash } from "./osOpen.ts";
 import { mapFromTimelines, mapTime } from "./timeMap.ts";
 import { pickFolder } from "./pickFolder.ts";
 import { bloomLaunch, ProjectSettingsStore } from "./projectSettings.ts";
@@ -79,6 +80,29 @@ function gitUserName(cwd: string): string {
   return userInfo().username;
 }
 
+/** The Gravatar picture for git's user.email, which Gravatar answers with a 404 when the
+ * address has none. */
+function gitGravatar(cwd: string): string | undefined {
+  try {
+    const email = execFileSync("git", ["config", "user.email"], { cwd, encoding: "utf8" })
+      .trim()
+      .toLowerCase();
+    if (!email) return undefined;
+    const hash = createHash("sha256").update(email).digest("hex");
+    return `https://gravatar.com/avatar/${hash}?s=80&d=404`;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The reviewer's name and, when Coanda knows their email, their picture. */
+function whoAmI(cwd: string, user: string | undefined): Pick<ServerInfo, "user" | "avatars"> {
+  if (user) return { user, avatars: {} };
+  const name = gitUserName(cwd);
+  const picture = gitGravatar(cwd);
+  return { user: name, avatars: picture ? { [name]: picture } : {} };
+}
+
 export interface ServeOptions {
   /** Folder to review. When absent, the folder remembered from the last run is used. */
   root?: string;
@@ -109,7 +133,13 @@ export function serve(
   const keyFile = opts.elevenLabsKeyFile ?? join(dirname(configFile), "elevenlabs_key.txt");
   const openRouterKeyFile = join(dirname(configFile), "openrouter_key.txt");
   const projectSettings = new ProjectSettingsStore(join(dirname(configFile), "projects.json"));
-  const info: ServerInfo = { root: null, rootName: "", user: opts.user ?? "", recent: [] };
+  const info: ServerInfo = {
+    root: null,
+    rootName: "",
+    user: opts.user ?? "",
+    avatars: {},
+    recent: [],
+  };
 
   /** The current folder's store; an error when no folder has been chosen yet. */
   const need = (): Store => {
@@ -286,7 +316,7 @@ export function serve(
     Object.assign(info, {
       root: full,
       rootName: store.rootName(),
-      user: opts.user ?? gitUserName(full),
+      ...whoAmI(full, opts.user),
       recent: config.recent,
     });
     emit({ type: "root" });
@@ -295,8 +325,7 @@ export function serve(
 
   const startRoot = opts.root ?? config.root;
   if (startRoot && existsSync(startRoot)) setRoot(startRoot);
-  else
-    Object.assign(info, { user: opts.user ?? gitUserName(process.cwd()), recent: config.recent });
+  else Object.assign(info, { ...whoAmI(process.cwd(), opts.user), recent: config.recent });
 
   const findAnnotation = (video: string, id: number, change: (a: Annotation) => void) => {
     let found = false;
@@ -398,6 +427,19 @@ export function serve(
         if (body.text?.trim()) {
           q.answer = { text: body.text.trim(), by: info.user, at: new Date().toISOString() };
         } else delete q.answer;
+      });
+      emit({ type: "questions", project });
+      return json(res, 200, list);
+    }
+
+    const forget = path.match(/^\/api\/questions\/(\d+)\/delete$/);
+    if (forget && method === "POST") {
+      if (project === null) throw new HttpError(400, "Give a project");
+      const id = Number(forget[1]);
+      const list = need().updateQuestions(project, (all) => {
+        const at = all.findIndex((x) => x.id === id);
+        if (at < 0) throw new HttpError(404, `No question ${id}`);
+        all.splice(at, 1);
       });
       emit({ type: "questions", project });
       return json(res, 200, list);
@@ -542,6 +584,27 @@ export function serve(
       if (project === null || !agents) throw new HttpError(400, "Give a project");
       agents.stop(project);
       return json(res, 200, agents.state(project));
+    }
+
+    if (path === "/api/rename" && method === "POST") {
+      const body = (await readJson(req)) as { path?: string; name?: string };
+      const store = need();
+      if (!body.path || !existsSync(store.resolvePath(body.path))) {
+        throw new HttpError(404, `Not found: ${body.path}`);
+      }
+      const renamed = store.rename(body.path, body.name ?? "");
+      emit({ type: "tree" });
+      return json(res, 200, { path: renamed });
+    }
+
+    if (path === "/api/delete" && method === "POST") {
+      const body = (await readJson(req)) as { path?: string };
+      const store = need();
+      const files = body.path ? store.withSidecars(body.path) : [];
+      if (!files.length) throw new HttpError(404, `Not found: ${body.path}`);
+      for (const f of files) osTrash(f);
+      emit({ type: "tree" });
+      return json(res, 200, { ok: true });
     }
 
     if (path === "/api/reveal" && method === "POST") {
@@ -846,7 +909,6 @@ export function serve(
 
     if (path === "/api/send" && method === "POST") {
       const store = need();
-      const { planApproval } = (await readJson(req)) as { planApproval?: boolean };
       // With a project, the project's open annotations go to its Claude session. Without one,
       // every open annotation goes to whoever runs `coanda wait`.
       const inProject = (v: string) =>
@@ -887,7 +949,7 @@ export function serve(
             "Annotations from the reviewer:\n\n" +
               JSON.stringify(
                 {
-                  ...projectSend(store, project, batch, Boolean(planApproval)),
+                  ...projectSend(store, project, batch),
                   answers: answered.map((q) => ({
                     question: q.text,
                     answer: q.answer!.text,
@@ -897,7 +959,7 @@ export function serve(
                 null,
                 2,
               ),
-            describeSend(batch, answered, Boolean(planApproval)),
+            describeSend(batch, answered),
           );
         }
       } else {
@@ -1032,12 +1094,7 @@ function claudeAuth(command: string[]): Promise<ClaudeAuth> {
  * What a project's session receives when the reviewer presses Send: the project's recipe once,
  * and for each video its switch, a copy of the render as reviewed, and its annotations.
  */
-function projectSend(
-  store: Store,
-  project: string,
-  batch: SentAnnotation[],
-  planApproval: boolean,
-) {
+function projectSend(store: Store, project: string, batch: SentAnnotation[]) {
   const projectDir = store.resolvePath(project);
   let recipe: unknown = null;
   try {
@@ -1115,7 +1172,7 @@ function projectSend(
         })),
       };
     });
-  return { planApproval, recipe, videos, documents };
+  return { recipe, videos, documents };
 }
 
 const PASTED_TYPES: Record<string, string> = {
@@ -1149,11 +1206,7 @@ function textQuote(raw: unknown): TextQuote | undefined {
  * What the chat shows of a send: each note as the conversation it is, the reviewer's words and
  * Claude's replies in order. Claude itself gets the full details as JSON.
  */
-function describeSend(
-  batch: SentAnnotation[],
-  answered: AgentQuestion[],
-  planApproval: boolean,
-): string {
+function describeSend(batch: SentAnnotation[], answered: AgentQuestion[]): string {
   const time = (t: number) =>
     `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
   const notes = batch.map((a) => {
@@ -1171,7 +1224,7 @@ function describeSend(
     return [head, ...lines].join("\n");
   });
   const answers = answered.map((q) => `Claude: ${q.text}\n${q.answer!.by}: ${q.answer!.text}`);
-  return [...(planApproval ? ["Ask me before acting."] : []), ...answers, ...notes].join("\n\n");
+  return [...answers, ...notes].join("\n\n");
 }
 
 /** Moves every annotation on a video along a time map; a note whose moment was cut is marked. */
