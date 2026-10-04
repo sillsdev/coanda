@@ -47,6 +47,10 @@ interface Props {
   /** The step after this one, offered once this one is approved. */
   nextStep?: PlanningStep;
   onNextStep?: (step: PlanningStep) => void;
+  /** The last planning document, after which comes the draft video. */
+  isLastStep?: boolean;
+  draftRequested?: string | null;
+  onMakeDraft?: () => void;
 }
 
 interface Draft {
@@ -63,7 +67,7 @@ interface Draft {
 export function DocView(props: Props) {
   const { path, version, annotations, activeId, showResolved, me, ref, onError } = props;
   const { onSelect, onDeselect, onCreate, onOpenPath, step, onApprove } = props;
-  const { nextStep, onNextStep } = props;
+  const { nextStep, onNextStep, isLastStep, draftRequested, onMakeDraft } = props;
   const approved = step?.approved !== undefined && !step.changedSinceApproval;
   const [doc, setDoc] = useState<DocText | null>(null);
   const [mode, setMode] = useState<"read" | "edit">("read");
@@ -316,13 +320,18 @@ export function DocView(props: Props) {
             {approved ? "Approved" : "Approve"}
           </button>
         )}
+        {approved && isLastStep && onMakeDraft && !draftRequested && (
+          <button className="btn btn-primary" data-testid="next-step" onClick={onMakeDraft}>
+            Make draft video
+          </button>
+        )}
         {approved && nextStep && onNextStep && (
           <button
             className="btn btn-primary"
             data-testid="next-step"
             onClick={() => onNextStep(nextStep)}
           >
-            {nextStep.exists ? "Open" : "Start"} {nextStep.title.toLowerCase()}
+            {nextStep.started ? "Open" : "Start"} {nextStep.title.toLowerCase()}
           </button>
         )}
         <div className="segmented" role="group">

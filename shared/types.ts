@@ -74,6 +74,8 @@ export interface Annotation {
 
 export interface AnnotationFile {
   annotations: Annotation[];
+  /** For a planning document: when the reviewer started work on it. */
+  started?: string;
   /** For a document: the reviewer approved it, as it was at `mtime`. */
   approved?: { by: string; at: string; mtime: number };
   /** Narration lines the current render has no recording for, as Claude last reported them. */
@@ -249,6 +251,8 @@ export interface PlanningStep {
   /** The document, relative to the reviewed folder. */
   path: string;
   exists: boolean;
+  /** Work on it has begun: the reviewer started it, or it no longer reads as its template. */
+  started: boolean;
   approved?: { by: string; at: string };
   /** Approved, then changed. */
   changedSinceApproval: boolean;

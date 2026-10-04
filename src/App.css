@@ -1087,7 +1087,7 @@
   position: absolute;
   right: 0;
   top: 40px;
-  width: 300px;
+  width: 360px;
   z-index: 20;
   display: flex;
   flex-direction: column;
@@ -1899,4 +1899,50 @@
 .tree-chevron {
   display: inline-flex;
   flex: none;
+}
+
+.key-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.key-field + .key-field {
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.key-row {
+  display: flex;
+  gap: 8px;
+}
+
+.key-row .field {
+  flex: 1;
+  min-width: 0;
+}
+
+.key-masked {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-soft);
+  word-break: break-all;
+}
+
+.key-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.key-note {
+  font-size: 12px;
+  color: var(--go);
+}
+
+.empty-hint {
+  margin: 4px 6px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-faint);
 }

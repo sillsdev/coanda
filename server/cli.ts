@@ -1,6 +1,8 @@
 // coanda serve [<folder>] | coanda wait | coanda reply <video> <id> <text> | coanda voice …
 import { readFileSync } from "node:fs";
 import type { SentAnnotation } from "../shared/types.ts";
+import { image } from "../toolkit/image.ts";
+import { credits, openRouterKey } from "../toolkit/openrouter.ts";
 import { voice, type VoiceMode } from "../toolkit/voice.ts";
 import { serve } from "./serve.ts";
 
@@ -21,15 +23,32 @@ const USAGE = `Usage:
       in the voice cache and leaves a gap for any other line; pass records the missing
       lines first, which costs money; plan prints what a pass would record and cost, as
       JSON, and makes nothing. Settings come from "voice" in video-project.json.
+  coanda image <out> [<input>...] --prompt TEXT [--references] [--aspect 16:9 | --size WxH]
+               [--quality Q] [--model ID] [--estimate]
+      Make an image from TEXT through OpenRouter (key from Coanda's settings). Given
+      <input> images, edit the first, with any others as references; with --references,
+      make a new image from them all. --aspect is one of 2:3 3:4 9:16 1:1 4:3 3:2 16:9
+      21:9; --size asks for exact pixels, brought to the nearest the model accepts;
+      without either, an edit keeps its image's shape. Use "-" as TEXT to read it from
+      stdin. The model defaults to "images.model" in video-project.json, else
+      openai/gpt-image-2.5-sunburst. Prints the file and what it cost; --estimate prints
+      only the estimated cost and makes nothing.
+  coanda image --credits
+      Print what's left on the OpenRouter account.
 
 The port defaults to $COANDA_PORT, or ${DEFAULT_PORT}.`;
+
+/** Options that take no value. */
+const SWITCHES = new Set(["estimate", "references", "credits"]);
 
 function parse(argv: string[]) {
   const positional: string[] = [];
   const flags: Record<string, string> = {};
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
-    if (arg.startsWith("--")) {
+    if (SWITCHES.has(arg.slice(2))) {
+      flags[arg.slice(2)] = "yes";
+    } else if (arg.startsWith("--")) {
       flags[arg.slice(2)] = argv[++i] ?? "";
     } else {
       positional.push(arg);
@@ -114,6 +133,39 @@ async function main() {
         throw new UsageError("voice needs <picture> <out>");
       const result = await voice({ picture, out: out ?? "", timeline: flags.timeline, mode });
       if (mode === "plan") console.log(JSON.stringify(result, null, 2));
+      break;
+    }
+
+    case "image": {
+      if (flags.credits) {
+        const key = openRouterKey();
+        if (!key) throw new Error("No OpenRouter key: set one in Coanda's settings");
+        const c = await credits(key);
+        console.log(`$${c.remaining.toFixed(2)} left of $${c.total.toFixed(2)}`);
+        break;
+      }
+      const [out, ...inputs] = positional;
+      let prompt = flags.prompt ?? "";
+      if (prompt === "-") prompt = readFileSync(0, "utf8");
+      if (!out || !prompt.trim()) throw new UsageError("image needs <out> and --prompt");
+      const made = await image({
+        out,
+        prompt,
+        inputs,
+        fromReferences: Boolean(flags.references),
+        aspect: flags.aspect,
+        size: flags.size,
+        quality: flags.quality,
+        model: flags.model,
+        estimate: Boolean(flags.estimate),
+      });
+      const estimate = `about $${made.estimatedCost.toFixed(3)}`;
+      if (!made.out) {
+        console.log(`${made.model}${made.size ? ` at ${made.size}` : ""}: ${estimate}`);
+      } else {
+        const cost = made.cost === null ? estimate : `$${made.cost.toFixed(4)}`;
+        console.log(`${made.out} (${made.model}${made.size ? ` at ${made.size}` : ""}, ${cost})`);
+      }
       break;
     }
 

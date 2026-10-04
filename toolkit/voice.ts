@@ -9,10 +9,11 @@
 // It writes, beside the output video: `<name>.srt`, `<name>.timeline.json` (the timeline moved
 // past the freezes) and `<name>.voice.json` (each line, and the lines still unvoiced).
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join, parse, resolve } from "node:path";
+import { join, parse, resolve } from "node:path";
 import type { Timeline, UnvoicedLine } from "../shared/types.ts";
 import { PROJECT_FILE } from "../server/store.ts";
 import { elevenLabsKey, speak } from "./elevenlabs.ts";
+import { findRecipe } from "./recipe.ts";
 import { duration, ffmpeg } from "./ffmpeg.ts";
 import { findRecording, readCache, saveRecording } from "./voiceCache.ts";
 import {
@@ -71,14 +72,8 @@ const DEFAULT_SECONDS_PER_WORD = 0.43;
 
 /** The folder holding video-project.json, at or above `dir`, and its voice settings. */
 export function findVoiceSettings(dir: string): { projectDir: string; settings: VoiceSettings } {
-  for (let d = resolve(dir); ; d = dirname(d)) {
-    const file = join(d, PROJECT_FILE);
-    if (existsSync(file)) {
-      const recipe = JSON.parse(readFileSync(file, "utf8")) as { voice?: VoiceSettings };
-      return { projectDir: d, settings: recipe.voice ?? {} };
-    }
-    if (dirname(d) === d) return { projectDir: resolve(dir), settings: {} };
-  }
+  const { projectDir, recipe } = findRecipe(dir);
+  return { projectDir, settings: (recipe.voice as VoiceSettings | undefined) ?? {} };
 }
 
 export async function voice(opts: {

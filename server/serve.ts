@@ -33,6 +33,7 @@ import type {
 } from "../shared/types.ts";
 import { defaultConfigFile, loadConfig, saveConfig, withRoot } from "./config.ts";
 import { AgentManager } from "./agents.ts";
+import { credits as openRouterCredits } from "../toolkit/openrouter.ts";
 import { osOpen, osReveal } from "./osOpen.ts";
 import { mapFromTimelines, mapTime } from "./timeMap.ts";
 import { pickFolder } from "./pickFolder.ts";
@@ -42,6 +43,13 @@ import { isDocument, isVideoFile, PROJECT_FILE, Store } from "./store.ts";
 const DIST = resolve(dirname(fileURLToPath(import.meta.url)), "..", "dist");
 /** Coanda's templates for planning documents. */
 const TEMPLATES = resolve(dirname(fileURLToPath(import.meta.url)), "..", "agent", "templates");
+
+/** Each planning step's template, by step key, read afresh so edits to them apply at once. */
+function planningTemplates(): Record<string, string> {
+  return Object.fromEntries(
+    PLANNING_STEPS.map((s) => [s.key, readFileSync(join(TEMPLATES, `${s.key}.md`), "utf8")]),
+  );
+}
 
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -99,6 +107,7 @@ export function serve(
   let agents: AgentManager | null = null;
   const claudeCommand = opts.claudeCommand ?? ["claude"];
   const keyFile = opts.elevenLabsKeyFile ?? join(dirname(configFile), "elevenlabs_key.txt");
+  const openRouterKeyFile = join(dirname(configFile), "openrouter_key.txt");
   const projectSettings = new ProjectSettingsStore(join(dirname(configFile), "projects.json"));
   const info: ServerInfo = { root: null, rootName: "", user: opts.user ?? "", recent: [] };
 
@@ -259,9 +268,15 @@ export function serve(
           ...(model ? ["--model", model] : []),
           ...(effort ? ["--effort", effort] : []),
         ];
-        // The ElevenLabs key, for tools that make voice-over.
+        // The ElevenLabs key, for making voice-over, and the OpenRouter key, for images.
         if (existsSync(keyFile)) {
           launch.env = { ...launch.env, ELEVENLABS_API_KEY: readFileSync(keyFile, "utf8").trim() };
+        }
+        if (existsSync(openRouterKeyFile)) {
+          launch.env = {
+            ...launch.env,
+            OPENROUTER_API_KEY: readFileSync(openRouterKeyFile, "utf8").trim(),
+          };
         }
         return launch;
       },
@@ -359,7 +374,7 @@ export function serve(
 
     if (path === "/api/make-project" && method === "POST") {
       const folder = url.searchParams.get("folder") ?? "";
-      need().makeProject(folder);
+      need().makeProject(folder, planningTemplates());
       emit({ type: "tree" });
       return json(res, 200, { project: folder });
     }
@@ -390,7 +405,27 @@ export function serve(
 
     if (path === "/api/planning" && method === "GET") {
       if (project === null) throw new HttpError(400, "Give a project");
-      return json(res, 200, need().planningSteps(project));
+      return json(res, 200, need().planningSteps(project, planningTemplates()));
+    }
+
+    if (path === "/api/planning/draft" && method === "GET") {
+      if (project === null) throw new HttpError(400, "Give a project");
+      return json(res, 200, { requestedAt: need().draftRequested(project) });
+    }
+
+    // After the script, the draft video: Claude builds it from the planning documents.
+    if (path === "/api/planning/draft" && method === "POST") {
+      if (project === null) throw new HttpError(400, "Give a project");
+      need().requestDraft(project);
+      if (agents) {
+        agents.send(
+          project,
+          "[Coanda] The reviewer approved the script and asks for the draft video. Build it " +
+            "from the script as your guidance says for the draft video.",
+          "Make the draft video",
+        );
+      }
+      return json(res, 200, { requestedAt: need().draftRequested(project) });
     }
 
     if (path === "/api/planning/start" && method === "POST") {
@@ -546,17 +581,43 @@ export function serve(
       return json(res, 200, { started: true });
     }
 
+    // Which keys are saved, as their first few characters, enough to tell keys apart, and their
+    // length.
+    const start = (file: string) => {
+      if (!existsSync(file)) return null;
+      const key = readFileSync(file, "utf8").trim();
+      return { start: key.slice(0, 13), length: key.length };
+    };
+    const keys = () => ({
+      elevenLabsKey: start(keyFile),
+      openRouterKey: start(openRouterKeyFile),
+    });
+
+    if (path === "/api/openrouter-credits" && method === "GET") {
+      if (!existsSync(openRouterKeyFile)) throw new HttpError(404, "No OpenRouter key");
+      return json(
+        res,
+        200,
+        await openRouterCredits(readFileSync(openRouterKeyFile, "utf8").trim()),
+      );
+    }
+
     if (path === "/api/settings" && method === "GET") {
-      return json(res, 200, { elevenLabsKey: existsSync(keyFile) });
+      return json(res, 200, keys());
     }
 
     if (path === "/api/settings" && method === "POST") {
-      const body = (await readJson(req)) as { elevenLabsKey?: string };
-      if (typeof body.elevenLabsKey === "string" && body.elevenLabsKey.trim()) {
-        mkdirSync(dirname(keyFile), { recursive: true });
-        writeFileSync(keyFile, body.elevenLabsKey.trim());
+      const body = (await readJson(req)) as { elevenLabsKey?: string; openRouterKey?: string };
+      for (const [value, file] of [
+        [body.elevenLabsKey, keyFile],
+        [body.openRouterKey, openRouterKeyFile],
+      ] as const) {
+        if (typeof value === "string" && value.trim()) {
+          mkdirSync(dirname(file), { recursive: true });
+          writeFileSync(file, value.trim());
+        }
       }
-      return json(res, 200, { elevenLabsKey: existsSync(keyFile) });
+      return json(res, 200, keys());
     }
 
     if (path === "/api/pick-folder" && method === "POST") {

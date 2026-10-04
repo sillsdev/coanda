@@ -99,7 +99,7 @@ export function AnnotationList(props: Props) {
   return (
     <section className="panel">
       <div className="panel-head">
-        <div className="panel-title">Annotations</div>
+        <div className="panel-title">TODOs &amp; Questions</div>
         <span className="open-badge" data-testid="unresolved-count">
           {unresolved.length} open
         </span>
@@ -118,6 +118,11 @@ export function AnnotationList(props: Props) {
             onOpenPath={props.onOpenPath}
           />
         ))}
+        {!asking.length && !shown.length && (
+          <p className="empty-hint">
+            To add an item here, highlight text or click in a paused video.
+          </p>
+        )}
         {shown.map((a) => {
           const isActive = a.id === activeId;
           const last = a.thread.at(-1);

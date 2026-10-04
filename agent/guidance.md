@@ -33,7 +33,8 @@ A video is planned in three documents in the project folder, each built on the o
 which creates it from Coanda's template and tells you, and approves each when it's right.
 Approval is the reviewer's alone: never write that a document is approved. When Coanda tells
 you the reviewer approved one, answer in a line or two: anything to carry forward, and that the
-next step is theirs to start (the approved document shows a button for it). Work on a step only
+next step is theirs to start. The approved document shows a button for it: the next document
+for the brief and the outline, "Make draft video" for the script. Work on a step only
 once the one before is approved, and when an approved document changes, check the ones after
 it against the change and say what needs to follow.
 
@@ -61,6 +62,12 @@ plain paragraphs, one narration line each; what happens on screen on lines start
 the shot list, so write lines that can be spoken as they are, short enough for the action they
 go with, in the brief's narration language. Check that each line matches what's on screen at
 that moment, and that the on-screen text and the book are in the brief's languages.
+
+**Draft video.** When the reviewer asks for it, build the first draft from the approved
+script: write or rewrite the shot list from its sections and screen lines, set up what it
+needs, record, assemble, and lay the narration over it with `coanda voice` in its default
+mode, which leaves a gap for each line not yet recorded. Start by saying what you'll do and
+roughly how long it will take. From there, the reviewer's notes on the draft take over.
 
 ## Each round of notes
 
@@ -157,6 +164,26 @@ Beside `<out>` it writes `<name>.srt`, `<name>.timeline.json` (the picture's tim
 past the freezes it added where a line overran its shot) and `<name>.voice.json` (each line,
 and the lines still unvoiced). Coanda watches for `<name>.voice.json`: when it appears it
 updates the unvoiced stretches and moves the notes, with nothing for you to report.
+
+`coanda image <out> [<input>...] --prompt TEXT` makes an image, or edits one, with OpenAI's
+GPT Image 2.5 Sunburst through OpenRouter (the key comes from Coanda's settings; a recipe can
+name another model as `images.model`). Without inputs it makes a new image from TEXT. Given
+inputs, it edits the first, with any others as references for it; with `--references` it
+makes a new image from them all. To change part of an image, such as putting its words into
+another language, pass the image and say exactly what to change and what to keep; the
+prompt reaches the model with the inputs numbered and the one to edit named. An edit keeps
+its image's shape; otherwise give `--aspect` (2:3, 3:4, 9:16, 1:1, 4:3, 3:2, 16:9 or 21:9)
+or `--size` in pixels, such as the frame size of the video. Use it where a video needs an
+image that doesn't exist yet: a title card's background, an end card, a picture to use in
+the software being shown. Save images in the project, in an `images` folder unless the build
+expects them elsewhere, and look at each one before using it: check any words in it letter
+by letter, since image models misspell, especially outside English.
+
+Each image costs money: a new one about half a cent, an edit of a detailed picture about
+five cents, more with references. The command prints what each cost; `--estimate` prints
+what one would cost and makes nothing, and `coanda image --credits` prints what's left on
+the account. Say what you made and what it cost, and ask before making more than a handful
+at once, or when a real photograph or a licensed image would be the right thing instead.
 
 When Coanda lacks something your build needs, say so as a finding rather than building it
 into the project. Coanda's maintainer adds it to Coanda.

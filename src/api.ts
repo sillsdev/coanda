@@ -31,6 +31,18 @@ const post = <T>(path: string, body?: unknown) =>
 const q = (video: string) => `video=${encodeURIComponent(video)}`;
 const p = (project: string) => `project=${encodeURIComponent(project)}`;
 
+/** A saved API key, as its first 13 characters and its length. */
+export interface KeyStart {
+  start: string;
+  length: number;
+}
+
+/** The saved API keys; null where there is none. */
+export interface SavedKeys {
+  elevenLabsKey: KeyStart | null;
+  openRouterKey: KeyStart | null;
+}
+
 export interface NewAnnotation {
   kind: "pin" | "arrow" | "text";
   quote?: TextQuote;
@@ -100,6 +112,12 @@ export const api = {
    * reviewer. */
   startPlanning: (project: string, step: string) =>
     post<{ path: string }>(`/api/planning/start?${p(project)}&step=${encodeURIComponent(step)}`),
+  /** When the draft video was asked for, or null. */
+  draft: (project: string) =>
+    request<{ requestedAt: string | null }>(`/api/planning/draft?${p(project)}`),
+  /** Asks Claude to build the draft video from the approved script. */
+  makeDraft: (project: string) =>
+    post<{ requestedAt: string | null }>(`/api/planning/draft?${p(project)}`),
   approve: (doc: string, approved: boolean) =>
     post<{ ok: true }>(`/api/approve?${q(doc)}`, { approved }),
   /** Saves a document; refused if it changed on disk since `baseMtime`. */
@@ -126,9 +144,13 @@ export const api = {
   openPath: (path: string, project?: string | null) =>
     post<{ path: string }>(project == null ? "/api/open" : `/api/open?${p(project)}`, { path }),
   claudeLogin: () => post<{ started: boolean }>("/api/claude-login"),
-  settings: () => request<{ elevenLabsKey: boolean }>("/api/settings"),
-  saveElevenLabsKey: (key: string) =>
-    post<{ elevenLabsKey: boolean }>("/api/settings", { elevenLabsKey: key }),
+  /** What's left on the OpenRouter account, in dollars. */
+  openRouterCredits: () =>
+    request<{ total: number; used: number; remaining: number }>("/api/openrouter-credits"),
+  /** Which API keys are saved. */
+  settings: () => request<SavedKeys>("/api/settings"),
+  saveKey: (which: keyof SavedKeys, key: string) =>
+    post<SavedKeys>("/api/settings", { [which]: key }),
   videoInfo: (video: string) => request<VideoInfo>(`/api/video?${q(video)}`),
 };
 

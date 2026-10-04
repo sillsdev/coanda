@@ -10,7 +10,7 @@ import type {
   TreeNode,
   VideoInfo,
 } from "../shared/types.ts";
-import { api, mediaUrl, subscribe, subtitleUrl } from "./api.ts";
+import { api, mediaUrl, subscribe, subtitleUrl, type SavedKeys } from "./api.ts";
 import { AgentPanel } from "./components/AgentPanel.tsx";
 import { AnnotationList } from "./components/AnnotationList.tsx";
 import { DocView, type DocViewHandle } from "./components/DocView.tsx";
@@ -101,7 +101,7 @@ function App() {
   const [settings, setSettings] = useState<ProjectSettings>({});
   const bloom = settings.bloom ?? null;
   const [auth, setAuth] = useState<ClaudeAuth | null>(null);
-  const [keySaved, setKeySaved] = useState(false);
+  const [keys, setKeys] = useState<SavedKeys>({ elevenLabsKey: null, openRouterKey: null });
   const projectRef = useRef(project);
   useEffect(() => {
     projectRef.current = project;
@@ -166,9 +166,16 @@ function App() {
     if (project != null) void loadQuestions(project);
   }, [project, loadQuestions]);
 
+  /** When the draft video was asked for, or null. */
+  const [draftRequested, setDraftRequested] = useState<string | null>(null);
   const loadSteps = useCallback(async (folder: string) => {
-    const list = await api.planning(folder).catch(() => []);
-    if (projectRef.current === folder) setSteps(list);
+    const [list, draft] = await Promise.all([
+      api.planning(folder).catch(() => []),
+      api.draft(folder).catch(() => ({ requestedAt: null })),
+    ]);
+    if (projectRef.current !== folder) return;
+    setSteps(list);
+    setDraftRequested(draft.requestedAt);
   }, []);
   useEffect(() => {
     if (project != null) void loadSteps(project);
@@ -193,7 +200,7 @@ function App() {
   useEffect(() => {
     api.info().then(showFolder, (e: Error) => setError(e.message));
     api.tree().then(setTree, (e: Error) => setError(e.message));
-    void api.settings().then((s) => setKeySaved(s.elevenLabsKey));
+    void api.settings().then(setKeys);
   }, [showFolder]);
 
   useEffect(() => {
@@ -277,6 +284,17 @@ function App() {
 
   const run = (p: Promise<unknown>) => p.catch((e: Error) => setError(e.message));
 
+  /** Asks Claude to build the draft video from the approved script. */
+  const makeDraft = () => {
+    if (project == null) return;
+    void run(
+      api.makeDraft(project).then((d) => {
+        setDraftRequested(d.requestedAt);
+        void loadAgent(project);
+      }),
+    );
+  };
+
   /** Starts a planning document from its template and opens it; Claude begins on it. */
   const startStep = (step: PlanningStep) => {
     if (project == null) return;
@@ -306,10 +324,8 @@ function App() {
     <div className="app">
       <Header rootName={info.rootName} video={video} reviewers={reviewers}>
         <Settings
-          elevenLabsKeySaved={keySaved}
-          onSaveKey={async (key) => {
-            setKeySaved((await api.saveElevenLabsKey(key)).elevenLabsKey);
-          }}
+          saved={keys}
+          onSaveKey={async (which, key) => setKeys(await api.saveKey(which, key))}
         />
       </Header>
       <div
@@ -354,6 +370,8 @@ function App() {
             steps={steps}
             onOpen={(step) => chooseVideo(step.path)}
             onStart={startStep}
+            draftRequested={draftRequested}
+            onMakeDraft={makeDraft}
           />
         ) : video && node && isDocument(video) ? (
           <DocView
@@ -376,7 +394,10 @@ function App() {
             onError={showError}
             step={steps.find((s) => s.path === video)}
             nextStep={steps[steps.findIndex((s) => s.path === video) + 1]}
-            onNextStep={(next) => (next.exists ? chooseVideo(next.path) : startStep(next))}
+            isLastStep={steps.at(-1)?.path === video}
+            draftRequested={draftRequested}
+            onMakeDraft={makeDraft}
+            onNextStep={(next) => (next.started ? chooseVideo(next.path) : startStep(next))}
             onApprove={(approved) =>
               void run(
                 api.approve(video, approved).then(async () => {

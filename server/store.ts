@@ -225,18 +225,25 @@ export class Store {
 
   /** Makes a folder a video project by writing an empty video-project.json in it. */
   /** The project's planning documents and how far each has got. */
-  planningSteps(project: string): PlanningStep[] {
+  /** `templates` holds each step's template, by step key. */
+  planningSteps(project: string, templates: Record<string, string>): PlanningStep[] {
+    const unify = (text: string) => text.replace(/\r\n/g, "\n").trim();
     return PLANNING_STEPS.map((step) => {
       const path = project ? `${project}/${step.file}` : step.file;
       const full = this.resolvePath(path);
       const exists = existsSync(full);
-      const data = exists ? this.read(path) : { annotations: [] };
+      const data: AnnotationFile = exists ? this.read(path) : { annotations: [] };
       const approved = data.approved;
+      const started =
+        exists &&
+        (data.started !== undefined ||
+          unify(readFileSync(full, "utf8")) !== unify(templates[step.key] ?? ""));
       return {
         key: step.key,
         title: step.title,
         path,
         exists,
+        started,
         ...(approved ? { approved: { by: approved.by, at: approved.at } } : {}),
         changedSinceApproval:
           exists && approved !== undefined && Math.abs(statSync(full).mtimeMs - approved.mtime) > 1,
@@ -252,7 +259,32 @@ export class Store {
     const path = project ? `${project}/${step.file}` : step.file;
     const full = this.resolvePath(path);
     if (!existsSync(full)) writeFileSync(full, template);
+    this.update(path, (data) => {
+      data.started ??= new Date().toISOString();
+    });
     return path;
+  }
+
+  /** When the reviewer asked for the project's draft video, or null. */
+  draftRequested(project: string): string | null {
+    try {
+      const file = join(this.resolvePath(project), ".coanda", "planning.json");
+      return (
+        (JSON.parse(readFileSync(file, "utf8")) as { draftRequestedAt?: string })
+          .draftRequestedAt ?? null
+      );
+    } catch {
+      return null;
+    }
+  }
+
+  requestDraft(project: string): void {
+    const dir = join(this.resolvePath(project), ".coanda");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, "planning.json"),
+      JSON.stringify({ draftRequestedAt: new Date().toISOString() }, null, 2),
+    );
   }
 
   /** Marks a document approved as it is now, or withdraws the approval. */
@@ -285,9 +317,16 @@ export class Store {
     return join(this.resolvePath(project), ".coanda", "questions.json");
   }
 
-  makeProject(folder: string): void {
-    const file = join(this.resolvePath(folder), PROJECT_FILE);
+  /** Makes a folder a project, with its planning documents ready, each from its template. Any
+   * that are already there are left as they are. */
+  makeProject(folder: string, templates: Record<string, string>): void {
+    const dir = this.resolvePath(folder);
+    const file = join(dir, PROJECT_FILE);
     if (!existsSync(file)) writeFileSync(file, "{}\n");
+    for (const step of PLANNING_STEPS) {
+      const doc = join(dir, step.file);
+      if (!existsSync(doc)) writeFileSync(doc, templates[step.key] ?? "");
+    }
   }
 
   private projectAbove(start: string): string | null {

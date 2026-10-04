@@ -35,3 +35,32 @@ export function duration(file: string): number {
 export function ffmpeg(args: string[]): void {
   execFileSync(findTool("ffmpeg"), ["-v", "error", "-y", ...args], { stdio: "inherit" });
 }
+
+/** An image's size in pixels. */
+export function imageSize(file: string): { width: number; height: number } {
+  const out = execFileSync(findTool("ffprobe"), [
+    "-v",
+    "error",
+    "-select_streams",
+    "v:0",
+    "-show_entries",
+    "stream=width,height",
+    "-of",
+    "csv=p=0:s=x",
+    file,
+  ])
+    .toString()
+    .trim();
+  const [width, height] = out.split("x").map(Number);
+  if (!(width > 0 && height > 0)) throw new Error(`Could not read the size of ${file}`);
+  return { width, height };
+}
+
+/** Writes `to` as `from` (any image) converted to `to`'s format, its long edge brought down to
+ * `longEdge` if it's longer. */
+export function convertImage(from: string, to: string, longEdge?: number): void {
+  const scale = longEdge
+    ? ["-vf", `scale='if(gt(iw,ih),min(${longEdge},iw),-2)':'if(gt(iw,ih),-2,min(${longEdge},ih))'`]
+    : [];
+  ffmpeg(["-i", from, ...scale, "-frames:v", "1", to]);
+}
