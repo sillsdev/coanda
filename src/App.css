@@ -49,13 +49,17 @@
   flex: none;
 }
 
+/* logo.svg used as a mask, so the header draws it in its own colour. */
 .brand-logo {
-  height: 26px;
-  width: auto;
+  height: 39px;
+  aspect-ratio: 39.4 / 27;
   display: block;
+  background: #6497ff;
+  mask: url(/logo.svg) center / contain no-repeat;
 }
 
 .brand-name {
+  color: #6497ff;
   font-family: var(--font-heading);
   font-weight: 600;
   font-size: 17px;

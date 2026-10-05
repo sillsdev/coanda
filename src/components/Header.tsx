@@ -10,7 +10,7 @@ export function Header({ reviewers, children }: Props) {
   return (
     <header className="app-header">
       <div className="brand">
-        <img src="/logo.svg" alt="" className="brand-logo" />
+        <span className="brand-logo" aria-hidden="true" />
         <span className="brand-name">HowReel</span>
       </div>
       {reviewers.length > 0 && (

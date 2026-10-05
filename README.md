@@ -32,12 +32,24 @@ feedback or ask for changes.
   styles, and the projects folder with transcripts and memory), but not to its login or caches.
   Clicking your avatar shows the account and offers **Switch account**; the panel offers **Log in
   to Claude** when the sessions are signed out.
-- **The app.** "App for this project", in the settings under the key button, sets the folder of
-  the app a project's videos are about (kept per machine in `~/.howreel/projects.json`). The
-  session gets that folder with `--add-dir`, and instructions to run and drive the app as the
-  folder's AGENTS.md and CLAUDE.md say.
-- The key button in the header saves an ElevenLabs API key to `~/.howreel/elevenlabs_key.txt`.
-  Sessions get it as `ELEVENLABS_API_KEY`.
+- **The app.** "App", in the settings under the key button, sets the folder of the app a
+  project's videos are about (kept per machine in `~/.howreel/projects.json`). The session gets
+  that folder with `--add-dir`, and instructions to run and drive the app as the folder's
+  AGENTS.md and CLAUDE.md say.
+- The settings also save an ElevenLabs API key (voice) to `~/.howreel/elevenlabs_key.txt` and an
+  OpenRouter API key (images) to `~/.howreel/openrouter_key.txt`. Sessions get them as
+  `ELEVENLABS_API_KEY` and `OPENROUTER_API_KEY`, and the settings show the OpenRouter credit left.
+- Each session starts with the instructions in [agent/guidance.md](agent/guidance.md).
+- **Planning.** A project moves through a brief, an outline and a script (`brief.md`,
+  `outline.md`, `script.md`, started from the templates in [agent/templates/](agent/templates/)),
+  then `draft.mp4` and `voiced.mp4`. Starting or approving a document, or the draft video, tells
+  the project's session, which takes the next step.
+- **Making the videos.** The `toolkit/` folder holds what sessions build videos with: the
+  recorder that captures the app, take assembly, voice (ElevenLabs or Kokoro), subtitles, image
+  generation and checks. Projects import it from this checkout, so a change here reaches the next
+  take. The `howreel` CLI wraps it: `frames`, `assemble`, `odd-frames`, `subtitles`, `voice`,
+  `translated-subtitles`, `image`, and for inspecting a video `sheet`, `changes`, `levels`, `gaps`,
+  `summarize`, `check` and `words`. `howreel` with no command prints what each one does.
 - **Outside a project**, Send goes to whoever runs `howreel wait`, which blocks until something is
   sent and prints the annotations as JSON. Claude answers each one with
   `howreel reply <video> <id> <text>`. The skill in [skills/howreel/SKILL.md](skills/howreel/SKILL.md)
