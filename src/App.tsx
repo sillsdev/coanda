@@ -271,10 +271,8 @@ function App() {
   // Send covers the selected video's project when it has one, else the whole folder.
   const projectNode = project ? findNode(tree, project) : undefined;
   const questions = project == null ? [] : projectQuestions;
-  // What Send sends: open notes, and answers to Claude's questions not yet sent.
-  const openTotal =
-    sumVideos(projectNode ? [projectNode] : tree, (n) => n.open ?? 0) +
-    questions.filter((q) => q.answer && !q.sent).length;
+  // What Send sends: the open notes.
+  const openTotal = sumVideos(projectNode ? [projectNode] : tree, (n) => n.open ?? 0);
   const makeProject = async (folder: string) => {
     await api.makeProject(folder);
     setSelectedFolder(folder);
@@ -498,13 +496,6 @@ function App() {
             }}
             openTotal={openTotal}
             onOpenPath={openPath}
-            questions={questions}
-            onAnswer={(q, text) =>
-              project != null && void run(api.answer(project, q.id, text).then(setQuestions))
-            }
-            onDeleteQuestion={(q) =>
-              project != null && void run(api.deleteQuestion(project, q.id).then(setQuestions))
-            }
             onSend={() =>
               void run(
                 api.send(project).then(() => {
@@ -516,6 +507,13 @@ function App() {
           />
           <AgentPanel
             project={project}
+            questions={questions}
+            onAnswer={(q, text) =>
+              project != null && void run(api.answer(project, q.id, text).then(setQuestions))
+            }
+            onDeleteQuestion={(q) =>
+              project != null && void run(api.deleteQuestion(project, q.id).then(setQuestions))
+            }
             onMakeProject={() => void run(makeProject(scope))}
             bloom={bloom}
             model={settings.model ?? ""}

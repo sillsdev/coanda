@@ -71,7 +71,20 @@ export function schedule(lines: VoicedLine[], pictureSeconds: number) {
 
 /** The voiced picture's timeline: every anchor of the silent one, moved past the freezes. */
 export function shiftTimeline(timeline: Timeline, shift: (t: number) => number): Timeline {
-  return { anchors: timeline.anchors.map((a) => ({ ...a, t: shift(a.t) })) };
+  return {
+    anchors: timeline.anchors.map((a) => ({ ...a, t: shift(a.t) })),
+    ...(timeline.markings
+      ? { markings: timeline.markings.map((m) => ({ ...m, from: shift(m.from), to: shift(m.to) })) }
+      : {}),
+    ...(timeline.markingStyle ? { markingStyle: timeline.markingStyle } : {}),
+    ...(timeline.pointer
+      ? { pointer: timeline.pointer.map((p) => ({ ...p, t: shift(p.t) })) }
+      : {}),
+    ...(timeline.presses
+      ? { presses: timeline.presses.map((p) => ({ ...p, t: shift(p.t) })) }
+      : {}),
+    ...(timeline.keys ? { keys: timeline.keys.map(shift) } : {}),
+  };
 }
 
 /** The lines with no recording, where they are in the voiced picture. */

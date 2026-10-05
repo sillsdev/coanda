@@ -1,10 +1,22 @@
 // coanda serve [<folder>] | coanda wait | coanda reply … | coanda subtitles … | coanda voice … |
 // coanda image …
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-import type { SentAnnotation } from "../shared/types.ts";
+import { existsSync, readFileSync } from "node:fs";
+import { join, parse as parsePath, resolve } from "node:path";
+import type { SentAnnotation, Timeline } from "../shared/types.ts";
 import { image } from "../toolkit/image.ts";
 import { credits, openRouterKey } from "../toolkit/openrouter.ts";
+import { checkWords, readTimeline, reviewSheets, runChecks } from "../toolkit/checks.ts";
+import { elevenLabsKey } from "../toolkit/elevenlabs.ts";
+import {
+  anchorTimes,
+  audioLevels,
+  contactSheet,
+  parseCrop,
+  screenChanges,
+  summarize,
+} from "../toolkit/measure.ts";
+import { assemble, framesToVideo, gaps } from "../toolkit/take.ts";
+import { writeTranslatedSubtitles } from "../toolkit/translatedSubtitles.ts";
 import { voice, type VoiceMode } from "../toolkit/voice.ts";
 import { serve } from "./serve.ts";
 
@@ -21,6 +33,45 @@ const USAGE = `Usage:
       Post Claude's reply to one annotation. Use "-" as <text> to read it from stdin.
   coanda show <video> [--port N]
       Select <video> in the open app, so the reviewer sees it.
+  coanda frames <take folder>
+      Make <take folder>/screen.mp4, a steady 30 fps video, from the frames the recorder
+      (toolkit/recorder.ts) captured into it. Not needed after toolkit/screenRecorder.ts,
+      which writes screen.mp4 itself.
+  coanda assemble <take folder> <out> --title PNG [--title-text PNG] --end PNG [--trim-idle]
+      Make the silent picture: the take's screen.mp4 between a title card and an end card,
+      the size of its frames. --title-text, with transparency, fades in over the title.
+      Writes <out name>.timeline.json beside it: the take's narration lines, actions,
+      highlight boxes, arrows, fades, pointer, clicks and keys at their times in the
+      picture. Applies "markingEdits" from video-project.json, keeps every box up at least
+      2 s, and with --trim-idle shortens still stretches where nothing happens to 1 s.
+  coanda gaps <file.srt>
+      Print the ten longest silences between subtitles.
+  coanda sheet <video> <out.png> <time or anchor>... [--crop W:H:X:Y] [--columns N]
+               [--width PX] [--timeline FILE]
+      Write one PNG of the video's frames at the given moments, each labelled with its
+      time. A moment is seconds, or an anchor or box key from the timeline (default
+      <video name>.timeline.json), or the start of one, with an optional offset, such as
+      "click: Add Page+0.3". --crop cuts each frame to that part of the picture first.
+  coanda changes <video> <start> <seconds> [--threshold N] [--crop W:H:X:Y]
+      Print each moment the picture changes by more than N (default 0.6; a dialog or page
+      change is over 2.5, the pointer moving well under 1), with how much.
+  coanda levels <video> <start> <seconds> [--step SECONDS]
+      Print how loud the sound is every 0.03 s (or --step), in dB, to find when a sound
+      really starts.
+  coanda summarize <video or timeline.json>
+      Print what the timeline holds: narration lines, actions, boxes, clicks and keys,
+      with their times.
+  coanda check <video> [--say-during TEXT] [--sheets FOLDER]
+      Check a finished draft or voiced video against its timeline and voice report:
+      narration over an action or no beat before one, boxes shown under 2 s or that
+      don't leave together, clicks the screen reacts to in under 0.3 s (measured in the
+      video), pointer jumps and stops mid-move. Prints each finding with its time, and
+      what couldn't be checked. --say-during names a line (its words) that may play over
+      an action. With --sheets, also writes a sheet per highlight box into FOLDER.
+  coanda words <video> [--same SCRIPT=HEARD,...] [--language CODE]
+      Costs money: transcribe a voiced video with ElevenLabs (key from Coanda's settings)
+      and check that every narration word is heard once, in order, inside its own line.
+      --same accepts pairs speech recognition hears another way.
   coanda subtitles <picture> <out> [--timeline FILE]
       Make the draft video: the silent picture with its narration as subtitles, each
       line shown for as long as it should take to say, from the narration lines in the
@@ -28,8 +79,17 @@ const USAGE = `Usage:
   coanda voice <picture> <out> --mode plan|pass [--timeline FILE]
       The voice pass, which costs money: plan prints what it would record and cost, as
       JSON, and makes nothing; pass records each narration line, keeping any recording
-      already made of the same words, and lays them over the picture. Settings come from
-      "voice" in video-project.json.
+      already made of the same words, and lays them over the picture, with a click under
+      each press and a typing sound under each run of typing. Settings come from "voice"
+      in video-project.json: "provider" is "elevenlabs" (costs money) or "kokoro" (free,
+      runs here).
+  coanda translated-subtitles <video> <pairs.json> <code>
+      Write <video name>.<code>.srt: subtitles in another language for a reviewer, in
+      short phrases, each starting when the narration reaches the phrase's first word.
+      <pairs.json> is a list of [narration phrase, translation] pairs that together make
+      up the narration; timings come from <video name>.voice.json. "voice" and
+      "subtitles" write these themselves for each language in "translations" in the
+      recipe's voice entry.
   coanda image <out> [<input>...] --prompt TEXT [--references] [--aspect 16:9 | --size WxH]
                [--quality Q] [--model ID] [--estimate]
       Make an image from TEXT through OpenRouter (key from Coanda's settings). Given
@@ -46,7 +106,7 @@ const USAGE = `Usage:
 The port defaults to $COANDA_PORT, or ${DEFAULT_PORT}.`;
 
 /** Options that take no value. */
-const SWITCHES = new Set(["estimate", "references", "credits"]);
+const SWITCHES = new Set(["estimate", "references", "credits", "trim-idle"]);
 
 function parse(argv: string[]) {
   const positional: string[] = [];
@@ -165,6 +225,159 @@ async function main() {
       break;
     }
 
+    case "frames": {
+      const [take] = positional;
+      if (!take) throw new UsageError("frames needs <take folder>");
+      console.log(framesToVideo(resolve(take)));
+      break;
+    }
+
+    case "assemble": {
+      const [take, out] = positional;
+      if (!take || !out || !flags.title || !flags.end) {
+        throw new UsageError("assemble needs <take folder> <out> --title PNG --end PNG");
+      }
+      const made = assemble({
+        takeDir: resolve(take),
+        out: resolve(out),
+        cards: {
+          title: resolve(flags.title),
+          titleText: flags["title-text"] ? resolve(flags["title-text"]) : undefined,
+          end: resolve(flags.end),
+        },
+        trimIdle: flags["trim-idle"] ? true : undefined,
+      });
+      console.log(`${resolve(out)} (${made.seconds.toFixed(2)} s)`);
+      if (made.trimmed) console.log(`${made.trimmed.toFixed(2)} s of still picture cut`);
+      console.log(made.timeline);
+      break;
+    }
+
+    case "gaps": {
+      const [srtFile] = positional;
+      if (!srtFile) throw new UsageError("gaps needs <file.srt>");
+      for (const g of gaps(readFileSync(srtFile, "utf8"))) {
+        console.log(`${g.gap.toFixed(1)} s before ${g.at.toFixed(1)}: ${g.text}`);
+      }
+      break;
+    }
+
+    case "sheet": {
+      const [video, out, ...moments] = positional;
+      if (!video || !out || !moments.length) {
+        throw new UsageError("sheet needs <video> <out.png> and at least one moment");
+      }
+      const timeline = flags.timeline
+        ? (JSON.parse(readFileSync(flags.timeline, "utf8")) as Timeline)
+        : existsSync(timelineBeside(video))
+          ? readTimeline(video)
+          : { anchors: [] };
+      const at = anchorTimes(timeline, moments);
+      console.log(
+        contactSheet({
+          video: resolve(video),
+          out: resolve(out),
+          times: at.map((m) => m.t),
+          labels: at.map((m) => m.label),
+          crop: flags.crop ? parseCrop(flags.crop) : undefined,
+          columns: flags.columns ? Number(flags.columns) : undefined,
+          width: flags.width ? Number(flags.width) : undefined,
+        }),
+      );
+      break;
+    }
+
+    case "changes": {
+      const [video, start, seconds] = positional;
+      if (!video || !start || !seconds)
+        throw new UsageError("changes needs <video> <start> <seconds>");
+      const changes = screenChanges(resolve(video), Number(start), Number(seconds), {
+        threshold: flags.threshold ? Number(flags.threshold) : undefined,
+        crop: flags.crop ? parseCrop(flags.crop) : undefined,
+      });
+      for (const c of changes) console.log(`${c.t.toFixed(3)}  ${c.diff.toFixed(2)}`);
+      break;
+    }
+
+    case "levels": {
+      const [video, start, seconds] = positional;
+      if (!video || !start || !seconds)
+        throw new UsageError("levels needs <video> <start> <seconds>");
+      const levels = audioLevels(
+        resolve(video),
+        Number(start),
+        Number(seconds),
+        flags.step ? Number(flags.step) : undefined,
+      );
+      for (const l of levels) console.log(`${l.t.toFixed(3)}  ${l.db.toFixed(1)}`);
+      break;
+    }
+
+    case "summarize": {
+      const [file] = positional;
+      if (!file) throw new UsageError("summarize needs <video or timeline.json>");
+      const timeline = file.endsWith(".json")
+        ? (JSON.parse(readFileSync(file, "utf8")) as Timeline)
+        : readTimeline(resolve(file));
+      console.log(summarize(timeline));
+      break;
+    }
+
+    case "check": {
+      const [video] = positional;
+      if (!video) throw new UsageError("check needs <video>");
+      const { findings, skipped } = runChecks({
+        video: resolve(video),
+        sayDuring: flags["say-during"] ? [flags["say-during"]] : undefined,
+      });
+      for (const f of findings) console.log(`${f.t.toFixed(2)}  ${f.check}: ${f.message}`);
+      for (const s of skipped) console.log(`not checked: ${s}`);
+      if (flags.sheets) {
+        reviewSheets(resolve(video), readTimeline(resolve(video)), resolve(flags.sheets), (line) =>
+          console.log(line),
+        );
+      }
+      if (findings.length) process.exitCode = 1;
+      break;
+    }
+
+    case "words": {
+      const [video] = positional;
+      if (!video) throw new UsageError("words needs <video>");
+      const apiKey = elevenLabsKey();
+      if (!apiKey) throw new Error("No ElevenLabs key: set one in Coanda's settings");
+      const sameWords = (flags.same ?? "")
+        .split(",")
+        .filter((pair) => pair.includes("="))
+        .map((pair) => pair.split("=") as [string, string]);
+      const findings = await checkWords({
+        video: resolve(video),
+        apiKey,
+        sameWords,
+        language: flags.language,
+      });
+      for (const f of findings) console.log(`${f.t.toFixed(2)}  ${f.check}: ${f.message}`);
+      if (findings.length) process.exitCode = 1;
+      else console.log("Every word heard once, in order, in its own line.");
+      break;
+    }
+
+    case "translated-subtitles": {
+      const [video, pairs, code] = positional;
+      if (!video || !pairs || !code) {
+        throw new UsageError("translated-subtitles needs <video> <pairs.json> <code>");
+      }
+      const v = parsePath(resolve(video));
+      const out = join(v.dir, `${v.name}.${code}.srt`);
+      const cues = writeTranslatedSubtitles({
+        report: join(v.dir, `${v.name}.voice.json`),
+        pairs: resolve(pairs),
+        out,
+      });
+      console.log(`${out} (${cues.length} cues)`);
+      break;
+    }
+
     case "image": {
       if (flags.credits) {
         const key = openRouterKey();
@@ -210,3 +423,8 @@ main().catch((err: unknown) => {
   if (err instanceof UsageError) console.error("\n" + USAGE);
   process.exit(1);
 });
+
+/** Where a video's timeline is kept: `<video name>.timeline.json` beside it. */
+function timelineBeside(video: string): string {
+  return resolve(video).replace(/\.[^.\\/]+$/, "") + ".timeline.json";
+}

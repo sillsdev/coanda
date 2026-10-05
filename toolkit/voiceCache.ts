@@ -24,6 +24,9 @@ export interface CacheEntry {
   previous: string;
   next: string;
   alignment: Alignment;
+  /** What the provider was given to say, when it differs from `text`, such as Kokoro's
+   * pronunciation markup. */
+  spoken?: string;
 }
 
 export interface Recording {
@@ -34,6 +37,8 @@ export interface Recording {
   /** Absent for recordings from older caches, which didn't record them. */
   voice?: string;
   model?: string;
+  provider?: string;
+  spoken?: string;
 }
 
 /** A line's words for matching recordings: trimmed, spaces collapsed, final punctuation off. */
@@ -62,7 +67,14 @@ export function readCache(dir: string): Recording[] {
         audio,
         text,
         seconds,
-        ...("alignment" in data ? { voice: data.voice, model: data.model } : {}),
+        ...("alignment" in data
+          ? {
+              voice: data.voice,
+              model: data.model,
+              provider: data.provider,
+              ...(data.spoken !== undefined ? { spoken: data.spoken } : {}),
+            }
+          : {}),
       });
     } catch {
       // Not a recording's data; ignore it.
@@ -72,22 +84,40 @@ export function readCache(dir: string): Recording[] {
 }
 
 /**
- * A recording of the same words in this voice: one made with this voice and model if there is
- * one, otherwise one from an older cache that didn't record its voice.
+ * A recording of the same words in this voice: one made with this provider, voice and model if
+ * there is one, otherwise, for ElevenLabs, one from an older cache that didn't record its voice
+ * (those were all ElevenLabs).
  */
 export function findRecording(
   cache: Recording[],
   text: string,
   voice: string | undefined,
   model: string | undefined,
+  provider = "elevenlabs",
 ): Recording | undefined {
   const words = sameWords(text);
   const same = cache.filter((r) => sameWords(r.text) === words);
-  return (
-    same.find((r) => r.voice !== undefined && r.voice === voice && r.model === model) ??
-    same.find((r) => r.voice === undefined) ??
-    (voice === undefined ? same[0] : undefined)
+  const exact = same.find(
+    (r) =>
+      r.voice !== undefined &&
+      r.voice === voice &&
+      r.model === model &&
+      (r.provider ?? "elevenlabs") === provider,
   );
+  if (exact || provider !== "elevenlabs") return exact;
+  return same.find((r) => r.voice === undefined) ?? (voice === undefined ? same[0] : undefined);
+}
+
+/** The character timings saved with a recording, if its data file has them. */
+export function readAlignment(audio: string): Alignment | undefined {
+  const file = audio.replace(/\.mp3$/, ".json");
+  if (!existsSync(file)) return undefined;
+  try {
+    const data = JSON.parse(readFileSync(file, "utf8")) as CacheEntry | Alignment;
+    return "alignment" in data ? data.alignment : data;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Saves a new recording and returns it. */
@@ -106,5 +136,7 @@ export function saveRecording(dir: string, entry: CacheEntry, audio: Buffer): Re
     seconds: entry.alignment.character_end_times_seconds.at(-1) ?? 0,
     voice: entry.voice,
     model: entry.model,
+    provider: entry.provider,
+    ...(entry.spoken !== undefined ? { spoken: entry.spoken } : {}),
   };
 }

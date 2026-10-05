@@ -317,7 +317,7 @@ test("plan a video: start the brief from the project page, approve it, and go on
   }
 });
 
-test("Claude's questions each get a card to answer, and the answers go with Send", async ({
+test("Claude's questions show in the chat, and each answer goes to Claude at once", async ({
   page,
 }) => {
   const scratch = mkdtempSync(join(tmpdir(), "coanda-ask-"));
@@ -346,38 +346,28 @@ test("Claude's questions each get a card to answer, and the answers go with Send
     await page.getByPlaceholder("Message Claude").fill("Plan the book, and ask me what you need");
     await page.getByPlaceholder("Message Claude").press("Enter");
 
-    // Each question is its own card, with its suggested answers as buttons.
-    const first = page.getByTestId("question-1");
-    const second = page.getByTestId("question-2");
+    // Each question is its own card in the chat, with its suggested answers as buttons.
+    const log = page.getByTestId("agent-log");
+    const first = log.getByTestId("question-1");
+    const second = log.getByTestId("question-2");
     await expect(first).toContainText("Should every page get a picture?");
     await expect(first.locator(".question-option")).toHaveText(["Yes", "No"]);
     await expect(second).toContainText("Which language should the book be in?");
     await expect(second.locator(".question-option")).toHaveCount(0);
     await page.screenshot({ path: join(shots, "23-questions.png") });
 
-    // Answer one with a button, the other by typing.
+    // An answer goes to Claude straight away, and shows in the chat as the reviewer's message.
     await first.getByRole("button", { name: "Yes" }).click();
-    await expect(first.locator(".chat-human")).toHaveText("Yes");
+    await expect(first.locator(".question-option")).toHaveCount(0);
+    await expect
+      .poll(lastMessage)
+      .toContain('answered your question "Should every page get a picture?": Yes');
+    await expect(log.locator(".agent-msg.user").last()).toHaveText("Yes");
+
     await second.getByPlaceholder("Answer…").fill("Spanish");
     await second.getByPlaceholder("Answer…").press("Enter");
-    await expect(second.locator(".chat-human")).toHaveText("Spanish");
-
-    // The answers go to Claude with Send, and the cards are done.
-    await expect(page.getByTestId("send")).toHaveText("Send 2 to Claude");
-    await page.getByTestId("send").click();
-    await expect(first).toHaveCount(0);
-    await expect.poll(lastMessage).toContain('"answer": "Spanish"');
-    const sent = lastMessage();
-    const send = JSON.parse(sent.slice(sent.indexOf("{"))) as {
-      answers: { question: string; answer: string; by: string }[];
-    };
-    expect(send.answers).toEqual([
-      { question: "Should every page get a picture?", answer: "Yes", by: "Ruth Ellis" },
-      { question: "Which language should the book be in?", answer: "Spanish", by: "Ruth Ellis" },
-    ]);
-    await expect(page.getByTestId("agent-log").locator(".agent-msg.user").last()).toContainText(
-      "Claude: Should every page get a picture?\nRuth Ellis: Yes",
-    );
+    await expect.poll(lastMessage).toContain(": Spanish");
+    await expect(page.getByTestId("send")).toHaveText("Send to Claude");
   } finally {
     server.close();
     delete process.env.FAKE_CLAUDE_STATE;

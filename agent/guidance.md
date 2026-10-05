@@ -99,6 +99,81 @@ take. From there, the reviewer's notes on the draft take over.
 `coanda show <video>`, and give its path in your message. Only the video to watch: the
 silent picture a draft is made from is an intermediate file.
 
+## What makes a good instructional video
+
+These rules come from reviewers' notes on earlier videos. Each cost a round of notes when it
+was missed.
+
+**Truth to the app.** Show only what the app really does. Never invent a click, a sound, a
+screen, a step or a label, in the recording or in the edit, and never hide or "fix" the app's
+own behaviour: its defaults, its untranslated strings, its load times. Report those instead;
+they're worth knowing for the app itself. When the app shows nothing for a moment (a restart
+with no splash screen), show what really happens, such as a fade to dark and back, rather than
+a made-up screen. Timing changes are fine: holds, trims, calmer pointer moves, a fade across a
+stretch the viewer mustn't see. The shot list must not do what a person wouldn't: no scrolling
+to bring a target into view, no typing into a box nobody clicked, no typing the instant the
+pointer arrives.
+
+**Say it, then show it.** The narrator announces each step while the screen holds still and
+the pointer rests; only when the sentence ends does the pointer move and act. Nothing on screen
+moves ahead of the words. A highlight appears on the word that names the thing, around the
+whole item (icon and label; a picture and its caption, even when the caption wraps), stays up
+at least 2 seconds, and boxes shown together leave together. Leave room: a beat before each
+action, at least 0.3 seconds between a click and the app's reaction, a pause before typing. A
+follow-up line comes after the action; a wrap-up line may play during the last one.
+
+**Calm, not slow.** Pointer moves of about 400 ms plus 0.7 ms per pixel, at most 1.1 s. No
+stop in the middle of a move. Pauses carry meaning: about 0.3 s within one idea, 0.8 s between
+ideas, longer after something important, and the last one mustn't hang. Text that appears all
+at once (a paste) dissolves in; it never pops. No zoom or drift on screenshots, covers or
+pictures inside the video, unless something is too small to see. The pointer rests on empty
+space, never on a control, since resting on one can bring up a tooltip; check every resting
+moment in the frames.
+
+**The script.** Many viewers read the narration's language as a second language: short
+sentences, common words, one idea per sentence, no buzzwords. Name every control exactly as the
+app labels it, in the video's interface language, and check each label in the running app
+before recording. Teaching content models good practice ("take your time to translate well",
+not "one sentence at a time"). Pick neutral example content, and ask before using anything
+sensitive.
+
+**Other languages.** Everything on screen should be in the narration's language: the
+interface, the content, the covers. Look labels up in the app's own translation files, then
+check them in the running app, since some parts come from other libraries. A strong model
+drafts and reviews a translation with the app's labels as a hard rule, keeping to the regional
+variety the audience uses (words differ by region). A translation stays "proof of concept"
+until a native speaker has checked it, and the video's description says so. Reviewers who
+don't know the language get subtitles in their language, in short phrases, each starting on
+its words.
+
+**Before every recording.** Walk through every step in the running app first, in the video's
+interface language, without recording, and fix the script and shot list to match what the app
+shows. Do a dry run of anything changed. Start each recording from a known state. A recording
+can take over the reviewer's screen, so ask before each one, say how long it will take, and
+wait for the go-ahead; otherwise keep the app behind their windows and never bring it to the
+front while they work. Nothing private may show: ask them to turn on Do Not Disturb, and after
+the recording look at the frames around every restart or window change. If a frame shows
+anything of their desktop, delete the recording at once.
+
+**Before the reviewer sees it.** The reviewer should never be the one who finds a defect.
+Look at frames at every highlight (as it's drawn, drawn, last, and after) and through every
+transition, every 0.2 to 0.3 seconds: dialogs opening and closing, page changes, the start of
+pointer moves (nothing should jump), text appearing, restarts. Measure timing in the finished
+video, not in the recording. When the reviewer finds a new kind of defect, add a way to catch
+it (a check in Coanda, by sending it to Coanda's session) before fixing it. A defect reported
+twice means the diagnosis was wrong: measure again. You can't hear, so check audio by
+measuring: levels, timing, and transcribing it.
+
+**Versions.** Never rebuild a video the reviewer has already seen without saying why first,
+and make builds repeatable, so a rebuild with no changes gives the same video.
+
+**Thumbnails.** Generic, not tied to one language: one thumbnail serves every language version,
+so name the task only ("Translate a book"), with no "How to". Keep the logo away from the
+bottom right, where the video's length is shown. Put a picture on a card rather than drawing a
+border on it, since a rotated picture leaves a hairline gap. Check it at the size of a video
+list, where the text and picture must still read. A test or demo video says so on its
+thumbnail.
+
 ## Each round of notes
 
 1. **Read each note's thread first.** A note that already has replies, yours or the
@@ -117,8 +192,7 @@ silent picture a draft is made from is an intermediate file.
      the reviewer, and any choice you made to avoid a cost;
    - what you will not change;
    - whether times will move, and that your replies will give the new times.
-5. **Stop and wait for the reviewer when the send has `planApproval: true`** (the reviewer
-   ticked "Ask me before acting"), **or when the plan has** a reading you're unsure of, a paid or
+5. **Stop and wait for the reviewer when the plan has** a reading you're unsure of, a paid or
    irreversible step, or work much bigger than the notes deserve. Then the plan is
    your message, and every note's reply has status "question" (see Replying). Otherwise
    carry it out and put the plan at the top of your message. When only some notes need the
@@ -142,6 +216,28 @@ comes out of free credits, give both the credits and what it would cost in money
 with `--mode pass`. A recorded line runs to its own length rather than the estimate, so
 everything after it moves; Coanda moves the notes.
 
+The voice can come from ElevenLabs, which costs money, or from Kokoro, a free voice that runs
+on this computer: `"provider": "kokoro"` in the `voice` entry, with `voiceId` (such as
+`af_heart`, or a blend like `af_heart,bf_emma`), `langCode`, `speed`, and `python` set to the
+Python that has Kokoro installed. If Kokoro is missing, `coanda voice` says how to install it.
+A Kokoro pass costs nothing (its plan says cost 0), but it still waits until the reviewer asks
+for the voice pass: plan it, say it's free, and run it. When a video will end up with a paid
+voice, make it with Kokoro first, so the reviewer judges the pacing before anything is paid
+for. To change how Kokoro says a word, add a `markup` pair to the `voice` entry rather than
+changing the script: `[word](+1)` moves the stress, `[word](/phonemes/)` sets the sound. Only
+the lines it changes are recorded again.
+
+The voice pass also puts a click under each press and a typing sound under each run of
+typing, from the timeline's `presses` and `keys`. Drafts stay silent. `"sounds": false` in the
+`voice` entry leaves them out.
+
+For a reviewer who reads another language better, write a file of [narration phrase,
+translation] pairs in short phrases, which together make up the narration, and list it under
+`translations` in the `voice` entry with its language code, such as
+`{"spa": "script/subtitles-spa.json"}`. Each draft and voiced video then gets
+`<name>.spa.srt` beside it, each phrase starting on its first word. When the narration changes,
+translate again; until then Coanda warns and leaves that file out.
+
 A note about the narration's words, before the voice pass, is a change to the script and the
 subtitles; reply "done" once the subtitles say it.
 
@@ -155,6 +251,80 @@ commands run as `"<node>" <coanda>/server/cli.ts <command>`: use that Node, sinc
 one on the PATH may be too old.
 
 `coanda show <video>` selects the video in the reviewer's Coanda, so it's the one they see.
+
+**Recording.** Coanda's recorder, `<coanda>/toolkit/recorder.ts`, films any app that Chromium
+draws (a web page, Electron, WebView2). The project's shot list imports it and passes it a
+Playwright page that the project has already reached; launching the app and the app's own
+helpers stay in the project. `startRecorder({ page, takeDir, width, height, scale, setup })`
+lays the page out as a `width` x `height` screen (default 1024x768) rendered at `scale`
+(default 1.5). `setup(page)` is for the project's own per-page setup, such as hiding a field
+no frame may show. It returns `r`, with:
+
+- `r.startCapture()` and `r.finish()`. `finish` writes `frames.json` and `events.json` into the
+  take folder, and the caller then closes the app.
+- `r.say(text)` starts a narration line once the previous one would have been spoken (0.43 s
+  a word), and `r.quiet()` waits for the current one.
+- `r.log(what)` records an action, which becomes an anchor.
+- The drawn pointer: `r.showCursor()`, `r.moveTo(x, y)`, `r.moveToElement(locator)`,
+  `r.click(locator)`, `r.moveAndClick(locator)`, `r.clickIntoText(locator)`, `r.type(text)`,
+  `r.key(name)`, `r.ripple()`, `r.drag(frame, locator, x, y)`, `r.scrollNear(locator, dy, ms)`.
+- Highlights: `r.highlight(id, box)`, `r.highlightElements(id, locators, padding)`,
+  `r.arrow(id, target, side)` and `r.unhighlight(id)`; `r.unhighlight()` with no id takes
+  every box and arrow down together. They're logged as markings, not drawn.
+- `r.dissolve(() => action, { region })` wraps an action that makes text or a picture appear
+  all at once, such as a paste, so it fades in instead of popping. Keep the pointer out of the
+  region.
+
+The recorder paces actions the way the rules above ask. A pointer move with no duration takes
+400 ms plus 0.7 ms per pixel, at most 1.1 s, so leave out `ms` unless a move needs to differ.
+A click reaches the app 0.3 s after its ripple, typing starts at least 0.6 s after the pointer
+last moved or clicked, and `unhighlight` waits until a box has been up 2 s. Log every press
+and key: use `r.ripple()` for a press made some other way and `r.key("Enter")` rather than
+`page.keyboard.press`, so the checks and the voice pass's sounds see them.
+
+Then `coanda frames <take folder>` turns the frames into `screen.mp4`, and
+`coanda assemble <take folder> <out> --title PNG [--title-text PNG] --end PNG` puts it between
+the cards, writing the picture and its timeline, ready for `coanda subtitles`. It keeps every
+box up at least 2 s and makes boxes shown together leave together. With `--trim-idle` it
+shortens stretches longer than 2 s where the picture is still and nothing is said, logged,
+marked, moved, pressed or typed, down to 1 s, and moves every time in the timeline with them.
+`coanda gaps <file.srt>` lists the longest silences between lines. When something general
+about recording is missing or wrong, it belongs in Coanda's recorder: see "Fix the tools you
+use".
+
+**Recording an app Chromium doesn't draw.** For WinForms or WPF windows and the system's own
+dialogs, use `<coanda>/toolkit/screenRecorder.ts` instead. It films a window, or a rectangle
+of the screen, with ffmpeg and writes `screen.mp4` and `events.json` into the take folder, so
+go straight to `coanda assemble`. `startScreenRecorder({ takeDir, hwnd })` returns `r` with the
+same narration, pacing and markings as recorder.ts. Boxes and the pointer are in screen
+pixels, such as a control's UI Automation bounding rectangle; the pointer in the video is the
+one `r.moveTo` and `r.click(act)` log, and `act` is the project's own click.
+`<coanda>/toolkit/windows/windows.ts` finds and waits for windows (`waitForWindow`), keeps the
+app behind the reviewer's windows (`sendBehind`), photographs a covered window
+(`printWindow`), and brings one forward (`bringToFront`). While the reviewer works, keep the
+app behind their windows, and send it back whenever it comes forward. Never call
+`bringToFront`, move their mouse or type on their machine without their go-ahead for that
+recording. Screen recording films whatever is on screen, and its check for windows covering
+the app can miss a short popup, so ask for Do Not Disturb, and after every recording look at
+the frames at each stretch `r.finish()` reports in `covered` and around every window change.
+Delete the recording at once if any frame shows anything that isn't the app.
+
+**Measure, don't guess.** To see a moment, run
+`coanda sheet <video> <out.png> <times or anchor and box keys>` and look at the PNG; step every
+0.2 to 0.3 s through each transition, and crop with `--crop` to judge a box or a label. To find
+when the picture changes (a dialog opening after a click, a page shifting, whether a jump is
+real), use `coanda changes`; for when a sound starts, `coanda levels`. After a recording,
+`coanda summarize` shows whether every step happened.
+
+**Before the reviewer sees a draft or a voiced video**, run
+`coanda check <video> --sheets <new folder>` (a new folder each time, since an image viewer can
+show an older file of the same name). Fix each finding, or say why it stands; the app's own
+behaviour stays. Then look at every box sheet: the box surrounds the whole item and nothing
+else, appears on the word that names the item, the pointer is still while the line is said,
+and boxes shown together leave together. The checks only catch what they know about, so still
+step through the transitions. After a voice pass, `coanda words <video>` checks that every
+word is heard once and in order; it costs money, so run it once per voice pass, never on
+drafts.
 
 `coanda subtitles <picture> <out>` makes the draft video from a silent picture: the picture
 with its narration as subtitles, each line shown for as long as it should take to say, and no
@@ -178,8 +348,8 @@ subtitle track.
 
 `coanda voice <picture> <out> --mode plan|pass` is the voice pass, and only that: `plan` prints
 what it would record and cost and makes nothing; `pass` records each line with ElevenLabs
-(the key comes from Coanda's settings), keeping any recording already made of the same words,
-and lays them over the picture. Its settings are the rest of the `voice` entry: `voiceId`,
+(the key comes from Coanda's settings) or Kokoro, keeping any recording already made of the
+same words, and lays them over the picture. Its settings are the rest of the `voice` entry: `voiceId`,
 `model`, `cache` (the recordings folder, relative to the project), `pricePer1000Characters`
 and `currency`. It sends each line with the lines before and after it as context, so it's
 spoken as part of the narration around it.
@@ -189,6 +359,52 @@ next line starts if that's sooner. Both commands write, beside `<out>`, `<name>.
 `<name>.timeline.json` (the picture's timeline moved past the freezes) and
 `<name>.voice.json`. Coanda watches for `<name>.voice.json`: when it appears it moves the
 notes to the new timing, with nothing for you to report.
+
+Both commands also draw the timeline's **markings** over the picture: highlight boxes that
+aren't in the recording, so moving, resizing, retiming or dropping one means editing the
+timeline and making the draft again, with nothing re-recorded. Record without boxes, and log
+where they go:
+
+```json
+{
+  "anchors": [],
+  "markingStyle": { "scale": 1.5 },
+  "markings": [
+    {
+      "key": "box: missing-info button",
+      "kind": "box",
+      "x": 812,
+      "y": 140,
+      "width": 60,
+      "height": 48,
+      "from": 151.2,
+      "to": 158.0
+    }
+  ]
+}
+```
+
+`x`, `y`, `width` and `height` are the box's outer edge in the picture's pixels; `from` is
+when it starts to fade in and `to` when it starts to fade out, in the picture's seconds.
+`markingStyle` sets how every box looks, and a marking's own `style` overrides it for that
+box. Its sizes are in layout pixels, and `scale` turns them into the picture's (1.5 for a page
+laid out at 1024x768 and captured at 1536x1152). The defaults: `color` "#ffb627", `border` 3,
+`radius` 10, `ring` 4 at `ringOpacity` 0.25, `glow` 22 (a box-shadow's blur) at `glowOpacity`
+0.55, `fade` 0.35 seconds, and `grow` 0.06 (6% larger at the start of the fade in and the end
+of the fade out). A box goes on before the freezes, so a freeze holds it as it was. The
+output timeline has the markings moved past the freezes, like the anchors.
+
+Two more kinds of marking: an `arrow`, whose rectangle is the box it points at and whose
+`side` ("left", "right", "above" or "below") is where it sits, slides in toward it; a
+`dissolve`, whose rectangle is a region, lays the frame from just before `from` over that
+region and fades it out by `to`. `arrowLength`, `arrowWidth`, `arrowGap` and `arrowSlide`
+in `markingStyle` set an arrow's size and movement.
+
+To change a box, arrow or dissolve, put the change in `markingEdits` in `video-project.json`,
+keyed by the marking's key (as in the take's events.json), with the fields to replace and
+times in the take's seconds, for example `"markingEdits": {"box: thumb": {"from": 54.74,
+"width": 150}}`. `coanda assemble` applies them on every build, so they outlast a new
+recording, and warns about any key the take doesn't have.
 
 `coanda image <out> [<input>...] --prompt TEXT` makes an image, or edits one, with OpenAI's
 GPT Image 2.5 Sunburst through OpenRouter (the key comes from Coanda's settings; a recipe can
@@ -210,12 +426,12 @@ what one would cost and makes nothing, and `coanda image --credits` prints what'
 the account. Say what you made and what it cost, and ask before making more than a handful
 at once, or when a real photograph or a licensed image would be the right thing instead.
 
-When Coanda lacks something your build needs, say so as a finding rather than building it
-into the project. Coanda's maintainer adds it to Coanda.
+When Coanda lacks something your build needs, don't build it into the project: get it into
+Coanda, as "Fix the tools you use" says.
 
 ## What a send contains
 
-A send is a JSON object with `planApproval` (see step 5), `recipe` (the contents of
+A send is a JSON object with `recipe` (the contents of
 `video-project.json`, null if there is none), and `videos`, one entry per video with notes:
 
 - `video`, `videoFile`: the video, relative to the working folder and absolute.
@@ -305,12 +521,14 @@ overrides both for that note.
 ]}
 ```
 
-Coanda shows each one as its own card in the reviewer's list, with its `options` as buttons and
-a box to type another answer, so ask there rather than listing questions in your message. Ask
-one thing per question, short enough to answer at a glance, and offer the likely answers as
-`options` (two or three, worded as the reviewer would say them). The answers reach you with
-the reviewer's next Send, as `answers`: each with the `question`, the `answer` and who gave
-it. Until then, do whatever doesn't depend on them.
+Coanda shows each one as its own card in the chat, after your message, with its `options` as
+buttons and a box to type another answer, so ask there rather than listing questions in your
+message. Ask one thing per question, short enough to answer at a glance, and offer the likely
+answers as `options` (two or three, worded as the reviewer would say them). Each answer
+reaches you at once, as a message starting "[Coanda] ... answered your question". Until then,
+do whatever doesn't depend on it. Questions scroll away with the chat, and the reviewer may
+never answer one: don't ask the same question again in a later turn. If it still matters, say
+so in a line in your message.
 
 The block's own `status` is "question" when any reply is a question, you asked anything in
 `questions`, or you need the reviewer before you can go on, otherwise "done".

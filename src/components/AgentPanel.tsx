@@ -1,15 +1,20 @@
 import { useEffect, useRef, useState } from "react";
-import type { AgentMessage, AgentState, ClaudeAuth } from "../../shared/types.ts";
+import type { AgentMessage, AgentQuestion, AgentState, ClaudeAuth } from "../../shared/types.ts";
 import { usePastedImages } from "../pastedImages.ts";
 import { AgentStatusBadge } from "./AgentStatusBadge.tsx";
 import { ChevronIcon, SendIcon } from "./icons.tsx";
 import { Linkify, Markdown } from "./Linkify.tsx";
 import { Thumbs } from "./PastedImages.tsx";
+import { QuestionCard } from "./QuestionCard.tsx";
 import { SessionMeter } from "./SessionMeter.tsx";
 
 interface Props {
   /** The project's folder; null when the selection is in no project; undefined while unknown. */
   project: string | null | undefined;
+  /** Claude's questions, shown in the chat where Claude asked them. */
+  questions: AgentQuestion[];
+  onAnswer: (q: AgentQuestion, text: string) => void;
+  onDeleteQuestion: (q: AgentQuestion) => void;
   onMakeProject: () => void;
   /** The project's Bloom worktree; null when none is chosen. */
   bloom: string | null;
@@ -124,8 +129,16 @@ export function AgentPanel(props: Props) {
       ) : (
         <>
           <div className="agent-log" ref={listRef} data-testid="agent-log">
-            {groupTools(state?.messages ?? []).map((g, i, all) =>
-              g.tools ? (
+            {groupTools(state?.messages ?? [], props.questions).map((g, i, all) =>
+              g.question ? (
+                <QuestionCard
+                  key={`q${g.question.id}`}
+                  question={g.question}
+                  onAnswer={(text) => props.onAnswer(g.question, text)}
+                  onDelete={() => props.onDeleteQuestion(g.question)}
+                  onOpenPath={props.onOpenPath}
+                />
+              ) : g.tools ? (
                 <ToolRun
                   key={g.start}
                   tools={g.tools}
@@ -220,18 +233,29 @@ function Elapsed({ since }: { since: string }) {
 }
 
 type Group =
-  | { start: number; tools: AgentMessage[]; message?: undefined }
-  | { start: number; message: AgentMessage; tools?: undefined };
+  | { start: number; tools: AgentMessage[]; message?: undefined; question?: undefined }
+  | { start: number; message: AgentMessage; tools?: undefined; question?: undefined }
+  | { start: number; question: AgentQuestion; tools?: undefined; message?: undefined };
 
-/** The messages, with each run of consecutive tool calls gathered into one group. */
-function groupTools(messages: AgentMessage[]): Group[] {
+/** The messages, with each run of consecutive tool calls gathered into one group, and each of
+ * Claude's questions placed where it was asked. */
+function groupTools(messages: AgentMessage[], questions: AgentQuestion[]): Group[] {
   const groups: Group[] = [];
+  const waiting = [...questions].sort((a, b) => a.askedAt.localeCompare(b.askedAt));
+  const askBefore = (at: string | undefined) => {
+    while (waiting.length && (at === undefined || waiting[0].askedAt <= at)) {
+      const question = waiting.shift()!;
+      groups.push({ start: -question.id, question });
+    }
+  };
   messages.forEach((m, i) => {
+    askBefore(m.at);
     const last = groups[groups.length - 1];
     if (m.role !== "tool") groups.push({ start: i, message: m });
     else if (last?.tools) last.tools.push(m);
     else groups.push({ start: i, tools: [m] });
   });
+  askBefore(undefined);
   return groups;
 }
 

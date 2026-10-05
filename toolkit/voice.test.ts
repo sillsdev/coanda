@@ -1,7 +1,8 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "vite-plus/test";
+import { usableRecording, voice, voiceProvider, type VoicePlan } from "./voice.ts";
 import { findRecording, readCache, saveRecording, sameWords } from "./voiceCache.ts";
 import { narrationLines, schedule, shiftTimeline, srt, unvoicedLines } from "./voicePlan.ts";
 
@@ -98,4 +99,88 @@ test("the cache finds recordings in this voice, or from an older cache with no v
   expect(findRecording(cache, "Click it", "matilda", "m")?.voice).toBe("matilda");
   expect(findRecording(cache, "Other voice.", "matilda", "m")).toBeUndefined();
   expect(findRecording(cache, "Never said.", "matilda", "m")).toBeUndefined();
+});
+
+test("the voiced timeline moves the pointer, presses and keys past the freezes too", () => {
+  const shift = (t: number) => (t >= 4 ? t + 1 : t);
+  const moved = shiftTimeline(
+    {
+      anchors: [],
+      pointer: [
+        { t: 3, x: 1, y: 2 },
+        { t: 5, x: 3, y: 4 },
+      ],
+      presses: [{ t: 4, x: 3, y: 4 }],
+      keys: [3.5, 4.5],
+    },
+    shift,
+  );
+  expect(moved.pointer).toEqual([
+    { t: 3, x: 1, y: 2 },
+    { t: 6, x: 3, y: 4 },
+  ]);
+  expect(moved.presses).toEqual([{ t: 5, x: 3, y: 4 }]);
+  expect(moved.keys).toEqual([3.5, 5.5]);
+  expect(shiftTimeline({ anchors: [] }, shift)).toEqual({ anchors: [] });
+});
+
+test("the provider is ElevenLabs unless the recipe says Kokoro", () => {
+  expect(voiceProvider({})).toBe("elevenlabs");
+  expect(voiceProvider({ provider: "kokoro" })).toBe("kokoro");
+  expect(() => voiceProvider({ provider: "piper" as "kokoro" })).toThrow(/must be/);
+});
+
+test("a recording in one provider's voice isn't used for another's", () => {
+  const dir = mkdtempSync(join(tmpdir(), "coanda-voice-"));
+  writeFileSync(join(dir, "old.mp3"), "");
+  writeFileSync(join(dir, "old.json"), JSON.stringify(alignment("Old line.", 1)));
+  const kokoro = { provider: "kokoro" as const, voiceId: "af_heart" };
+  saveRecording(
+    dir,
+    {
+      provider: "kokoro",
+      voice: "af_heart",
+      model: "kokoro/a/1",
+      text: "Use sign language.",
+      previous: "",
+      next: "",
+      alignment: alignment("Use sign language.", 1),
+      spoken: "Use [sign](-1) [language](+1).",
+    },
+    Buffer.from(""),
+  );
+  const cache = readCache(dir);
+  // Older recordings without a voice are ElevenLabs ones.
+  expect(usableRecording(cache, "Old line.", kokoro)).toBeUndefined();
+  expect(usableRecording(cache, "Old line.", { voiceId: "x", model: "m" })).toBeDefined();
+  expect(findRecording(cache, "Use sign language.", "af_heart", "kokoro/a/1")).toBeUndefined();
+  // A Kokoro recording is used only while the markup says the same.
+  const markup: [string, string][] = [["\\bsign language\\b", "[sign](-1) [language](+1)"]];
+  expect(usableRecording(cache, "Use sign language.", { ...kokoro, markup })).toBeDefined();
+  expect(usableRecording(cache, "Use sign language.", kokoro)).toBeUndefined();
+});
+
+test("a voice pass with Kokoro costs nothing", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "coanda-voice-"));
+  writeFileSync(
+    join(dir, "video-project.json"),
+    JSON.stringify({ voice: { provider: "kokoro", voiceId: "af_heart", cache: "cache" } }),
+  );
+  mkdirSync(join(dir, "drafts"));
+  writeFileSync(
+    join(dir, "drafts", "silent.timeline.json"),
+    JSON.stringify({ anchors: [{ key: "a", t: 1, say: "Click it." }] }),
+  );
+  const plan = (await voice({
+    picture: join(dir, "drafts", "silent.mp4"),
+    out: "",
+    mode: "plan",
+  })) as VoicePlan;
+  expect(plan).toMatchObject({
+    provider: "kokoro",
+    toRecord: 1,
+    characters: 9,
+    cost: 0,
+    currency: null,
+  });
 });

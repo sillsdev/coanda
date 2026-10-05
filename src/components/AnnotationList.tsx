@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { AgentQuestion, Annotation } from "../../shared/types.ts";
+import type { Annotation } from "../../shared/types.ts";
 import type { NoteEdit } from "../api.ts";
 import { formatTime } from "../format.ts";
 import { ArrowIcon, ArrowRightIcon, CheckIcon, PencilIcon, TrashIcon } from "./icons.tsx";
@@ -25,11 +25,7 @@ interface Props {
   openTotal: number;
   onSend: () => void;
   onOpenPath: (path: string) => void;
-  /** Claude's questions in this project. */
-  questions: AgentQuestion[];
   /** Answers a question; an empty answer takes it back. */
-  onAnswer: (q: AgentQuestion, text: string) => void;
-  onDeleteQuestion: (q: AgentQuestion) => void;
 }
 
 export function AnnotationList(props: Props) {
@@ -46,8 +42,6 @@ export function AnnotationList(props: Props) {
   }, [activeId]);
 
   const unresolved = annotations.filter((a) => a.status !== "resolved");
-  // Answered questions stay until their answers have gone to Claude.
-  const asking = props.questions.filter((q) => !q.sent);
   const resolvedCount = annotations.length - unresolved.length;
   const shown = annotations
     .filter((a) => a.status !== "resolved" || showResolved)
@@ -99,7 +93,7 @@ export function AnnotationList(props: Props) {
   return (
     <section className="panel">
       <div className="panel-head">
-        <div className="panel-title">TODOs &amp; Questions</div>
+        <div className="panel-title">TODOs</div>
         <span className="open-badge" data-testid="unresolved-count">
           {unresolved.length} open
         </span>
@@ -110,16 +104,7 @@ export function AnnotationList(props: Props) {
         )}
       </div>
       <div className="cards">
-        {asking.map((q) => (
-          <QuestionCard
-            key={`q${q.id}`}
-            question={q}
-            onAnswer={(text) => props.onAnswer(q, text)}
-            onDelete={() => props.onDeleteQuestion(q)}
-            onOpenPath={props.onOpenPath}
-          />
-        ))}
-        {!asking.length && !shown.length && (
+        {!shown.length && (
           <p className="empty-hint">
             To add an item here, highlight text or click in a paused video.
           </p>
@@ -361,79 +346,6 @@ function NoteEditor({
         <button className="btn btn-primary" disabled={empty || busy} onClick={() => void save()}>
           {saveLabel}
         </button>
-      </div>
-    </div>
-  );
-}
-
-/** One of Claude's questions, with its suggested answers as buttons and a box for another. */
-function QuestionCard({
-  question,
-  onAnswer,
-  onDelete,
-  onOpenPath,
-}: {
-  question: AgentQuestion;
-  onAnswer: (text: string) => void;
-  onDelete: () => void;
-  onOpenPath: (path: string) => void;
-}) {
-  const [text, setText] = useState("");
-  const answer = question.answer;
-  return (
-    <div className="card question-card" data-testid={`question-${question.id}`}>
-      <button className="mini-btn card-delete question-delete" title="Delete" onClick={onDelete}>
-        <TrashIcon />
-      </button>
-      <div className="chat">
-        <div className="chat-ai">
-          <Markdown text={question.text} onOpenPath={onOpenPath} />
-        </div>
-        {answer ? (
-          <div className="chat-human" title={answer.by}>
-            <button
-              className="mini-btn bubble-edit"
-              title="Change"
-              onClick={() => {
-                setText(answer.text);
-                onAnswer("");
-              }}
-            >
-              <PencilIcon />
-            </button>
-            {answer.text}
-          </div>
-        ) : (
-          <>
-            {question.options.length > 0 && (
-              <div className="question-options">
-                {question.options.map((o) => (
-                  <button key={o} className="btn question-option" onClick={() => onAnswer(o)}>
-                    {o}
-                  </button>
-                ))}
-              </div>
-            )}
-            <div className="reply-row">
-              <input
-                className="field"
-                placeholder="Answer…"
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && text.trim()) onAnswer(text);
-                }}
-              />
-              <button
-                className="btn btn-primary"
-                disabled={!text.trim()}
-                onClick={() => onAnswer(text)}
-              >
-                Answer
-              </button>
-            </div>
-          </>
-        )}
       </div>
     </div>
   );

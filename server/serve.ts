@@ -420,14 +420,22 @@ export function serve(
       if (project === null) throw new HttpError(400, "Give a project");
       const body = (await readJson(req)) as { text?: string };
       const id = Number(answer[1]);
+      let asked: AgentQuestion | undefined;
       const list = need().updateQuestions(project, (all) => {
         const q = all.find((x) => x.id === id);
         if (!q) throw new HttpError(404, `No question ${id}`);
         if (q.sent) throw new HttpError(400, "That answer has already gone to Claude");
-        if (body.text?.trim()) {
-          q.answer = { text: body.text.trim(), by: info.user, at: new Date().toISOString() };
-        } else delete q.answer;
+        if (!body.text?.trim()) throw new HttpError(400, "An answer needs text");
+        q.answer = { text: body.text.trim(), by: info.user, at: new Date().toISOString() };
+        q.sent = true;
+        asked = q;
       });
+      // An answer goes to Claude at once, as a message in the chat.
+      agents?.send(
+        project,
+        `[Coanda] ${asked!.answer!.by} answered your question "${asked!.text}": ${asked!.answer!.text}`,
+        asked!.answer!.text,
+      );
       emit({ type: "questions", project });
       return json(res, 200, list);
     }
