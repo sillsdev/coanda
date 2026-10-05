@@ -41,10 +41,13 @@ function startWait(): Promise<SentAnnotation[]> {
   return new Promise((resolvePromise, reject) => {
     const child = spawn(process.execPath, [cli, "wait", "--port", String(port)]);
     let out = "";
+    let err = "";
     child.stdout.on("data", (d: Buffer) => (out += d.toString()));
-    child.stderr.on("data", (d: Buffer) => (out += d.toString()));
+    child.stderr.on("data", (d: Buffer) => (err += d.toString()));
     child.on("exit", (code) =>
-      code === 0 ? resolvePromise(JSON.parse(out) as SentAnnotation[]) : reject(new Error(out)),
+      code === 0
+        ? resolvePromise(JSON.parse(out) as SentAnnotation[])
+        : reject(new Error(out + err)),
     );
   });
 }
@@ -93,7 +96,7 @@ test("annotate videos, send them to Claude, and see Claude's replies", async ({ 
 
   // Header, folder tree and reviewer.
   await expect(page.locator(".brand-name")).toHaveText("Coanda");
-  await expect(page.locator(".tree-row")).toHaveCount(5);
+  await expect(page.locator(".tree-row:not(.file)")).toHaveCount(5);
   await expect(page.locator(".reviewers .avatar")).toHaveText(["RE"]);
   await expect(page.locator(".player.empty")).toBeVisible();
 
@@ -139,7 +142,7 @@ test("annotate videos, send them to Claude, and see Claude's replies", async ({ 
   await openVideo(page, "getting-started/first-project.webm");
   await seekTo(page, 0.5);
   await addPin(page, 50, 50, "Hold on this slide a second longer.");
-  await expect(page.getByTestId("send")).toHaveText("Send 3");
+  await expect(page.getByTestId("send")).toHaveText("Send 3 to Chat");
   await expect(page.locator('[data-path="getting-started/welcome.webm"] .count-badge')).toHaveText(
     "2",
   );
@@ -162,7 +165,7 @@ test("annotate videos, send them to Claude, and see Claude's replies", async ({ 
     expect(existsSync(a.frameFile!)).toBe(true);
   }
   await expect(page.getByTestId("card-1")).toHaveAttribute("data-status", "sent");
-  await expect(page.getByTestId("send")).toHaveText("Send");
+  await expect(page.getByTestId("send")).toHaveText("Send to Chat");
   await expect(page.getByTestId("send")).toBeDisabled();
   expect(await (await fetch(`http://127.0.0.1:${port}/api/status`)).json()).toMatchObject({
     undelivered: 0,
@@ -202,7 +205,7 @@ test("annotate videos, send them to Claude, and see Claude's replies", async ({ 
   await page.getByPlaceholder("Reply to Claude…").press("Enter");
   await expect(page.getByTestId("card-2")).toHaveAttribute("data-status", "open");
   await expect(page.getByTestId("card-2")).toContainText("Close, but a touch darker please.");
-  await expect(page.getByTestId("send")).toHaveText("Send 1");
+  await expect(page.getByTestId("send")).toHaveText("Send 1 to Chat");
 
   // …and resolves the other.
   await page.getByTestId("card-1").getByRole("button", { name: "Resolve" }).click();
@@ -248,7 +251,7 @@ test("switch the folder from the sidebar, and reopen it on the next run", async 
   const readConfig = () =>
     JSON.parse(readFileSync(configFile, "utf8")) as { root: string; recent: string[] };
   const folder = page.getByTestId("folder");
-  const videoNames = page.locator(".tree-row .tree-label");
+  const videoNames = page.locator(".tree-row:not(.file) .tree-label");
 
   // Stands in for the OS folder chooser, which Playwright cannot click.
   let nextPick: string | null = null;

@@ -28,8 +28,11 @@ feedback or ask for changes.
   kept in `~/.coanda/sessions.json`, and after a restart it resumes the same conversation.
   Claude Code uses its own login (`claude auth login`); the panel offers **Log in to Claude** when
   it is signed out.
-- The key button in the header saves an ElevenLabs API key to `<tts>/elevenlabs_key.txt`, where
-  the training-videos tools read it (`tts` from `~/.bloom-training-videos.json`, else `C:/tts`).
+- **Bloom.** The Claude panel's **Bloom** row sets the BloomDesktop worktree a project's session
+  runs Bloom from (kept per machine in `~/.coanda/projects.json`). The session gets that worktree
+  with `--add-dir`, and instructions to use its `run-bloom` skill and take ports from its launcher.
+- The key button in the header saves an ElevenLabs API key to `~/.coanda/elevenlabs_key.txt`.
+  Sessions get it as `ELEVENLABS_API_KEY`.
 - **Outside a project**, Send goes to whoever runs `coanda wait`, which blocks until something is
   sent and prints the annotations as JSON. Claude answers each one with
   `coanda reply <video> <id> <text>`. The skill in [skills/coanda/SKILL.md](skills/coanda/SKILL.md)

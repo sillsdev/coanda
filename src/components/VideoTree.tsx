@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
+import { isDocument } from "../format.ts";
 import type { TreeNode } from "../../shared/types.ts";
 import { AgentStatusBadge } from "./AgentStatusBadge.tsx";
 import { FolderPicker } from "./FolderPicker.tsx";
-import { ChevronIcon, FolderIcon, PlayIcon } from "./icons.tsx";
+import { ChevronIcon, FileIcon, FolderIcon, PlayIcon } from "./icons.tsx";
 
 interface Props {
   rootName: string;
@@ -16,6 +17,9 @@ interface Props {
   onSelect: (path: string) => void;
   onSelectFolder: (path: string) => void;
   onMakeProject: (folder: string) => void;
+  onReveal: (path: string) => void;
+  /** Opens a file in its default app. */
+  onOpen: (path: string) => void;
 }
 
 function hasVideo(node: TreeNode): boolean {
@@ -80,6 +84,8 @@ export function VideoTree(props: Props) {
       <div className="tree" role="tree">
         {rows.map(({ node, depth, open }) => {
           const isFolder = node.kind === "folder";
+          // Documents open in the middle column; other files only in their own apps.
+          const isFile = node.kind === "file" && !isDocument(node.path);
           const isSelected = node.path === selected;
           return (
             <div
@@ -92,15 +98,17 @@ export function VideoTree(props: Props) {
                   ? `Modified ${new Date(node.mtime).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}`
                   : undefined
               }
-              className={`tree-row${isSelected ? " selected" : ""}${isFolder ? " folder" : ""}${node.project ? " project" : ""}`}
+              className={`tree-row${isSelected ? " selected" : ""}${isFolder ? " folder" : ""}${isFile ? " file" : ""}${node.step ? " planning" : ""}${node.project ? " project" : ""}`}
               style={{ paddingLeft: 8 + depth * 18 }}
               onClick={() => {
+                if (isFile) return;
                 if (!isFolder) return onSelect(node.path);
+                // A folder opens when chosen; choosing it again closes it.
+                if (isSelected || !open) toggle(node.path);
                 props.onSelectFolder(node.path);
-                toggle(node.path);
               }}
+              onDoubleClick={() => isFile && props.onOpen(node.path)}
               onContextMenu={(e) => {
-                if (!isFolder) return;
                 e.preventDefault();
                 setMenu({ x: e.clientX, y: e.clientY, node });
               }}
@@ -108,12 +116,28 @@ export function VideoTree(props: Props) {
               {isFolder ? (
                 <>
                   {node.children?.length ? (
-                    <ChevronIcon className="tree-icon muted" open={open} />
+                    <span
+                      className="tree-chevron"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggle(node.path);
+                      }}
+                    >
+                      <ChevronIcon className="tree-icon muted" open={open} />
+                    </span>
                   ) : (
                     <span className="tree-icon-space" />
                   )}
                   <FolderIcon className="tree-icon muted" />
                 </>
+              ) : node.step ? (
+                <span className="tree-step" aria-label={`Step ${node.step}`}>
+                  {node.step}
+                </span>
+              ) : isFile ? (
+                <FileIcon className="tree-icon muted" />
+              ) : node.kind === "file" ? (
+                <FileIcon className="tree-icon accent" />
               ) : (
                 <PlayIcon className="tree-icon accent" />
               )}
@@ -142,14 +166,25 @@ export function VideoTree(props: Props) {
         >
           <button
             role="menuitem"
-            disabled={menu.node.project}
             onClick={() => {
-              props.onMakeProject(menu.node.path);
+              props.onReveal(menu.node.path);
               setMenu(null);
             }}
           >
-            Make project here
+            Show in File Explorer
           </button>
+          {menu.node.kind === "folder" && (
+            <button
+              role="menuitem"
+              disabled={menu.node.project}
+              onClick={() => {
+                props.onMakeProject(menu.node.path);
+                setMenu(null);
+              }}
+            >
+              Make project here
+            </button>
+          )}
         </div>
       )}
     </aside>

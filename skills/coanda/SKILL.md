@@ -46,7 +46,7 @@ nothing was waiting). Each entry has:
 - `text`: what the reviewer asked for; `author`: who asked
 - `thread`: earlier replies, yours (`who: "claude"`) and the reviewer's (`who: "user"`).
   When the last message is the reviewer's, they are answering your earlier reply.
-- `voiceReady`: the video's **Ready for voice** switch, off by default. While it is off,
+- `voiceReady`: the video's **Include voice** switch, off by default. While it is off,
   do **not** generate new voice-over audio (it costs money each time): reuse the existing
   narration, or a placeholder, when you re-render. Generate the voice only once the reviewer
   has turned it on.

@@ -19,5 +19,13 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["vite.config.ts", "playwright.config.ts", "server", "shared", "scripts", "e2e"]
+  "include": [
+    "vite.config.ts",
+    "playwright.config.ts",
+    "server",
+    "toolkit",
+    "shared",
+    "scripts",
+    "e2e"
+  ]
 }

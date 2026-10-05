@@ -34,3 +34,16 @@ export function findNode(nodes: TreeNode[], path: string): TreeNode | undefined 
   }
   return undefined;
 }
+
+/** "claude-opus-5-5" → "Opus 5.5"; "claude-haiku-4-5-20251001" → "Haiku 4.5". Anything else,
+ * such as an alias, is shown as it is. */
+export function modelName(id: string): string {
+  const m = /^claude-([a-z]+)-(\d+)-(\d+)(?:-\d{8})?$/.exec(id);
+  if (!m) return id;
+  return `${m[1][0].toUpperCase()}${m[1].slice(1)} ${m[2]}.${m[3]}`;
+}
+
+/** Files Coanda opens as documents, as the server decides. */
+export function isDocument(path: string): boolean {
+  return path.toLowerCase().endsWith(".md");
+}

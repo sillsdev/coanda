@@ -1,9 +1,33 @@
 // Reads the reviewed folder and the annotation files kept next to each video.
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import type { Annotation, AnnotationFile, TreeNode } from "../shared/types.ts";
+import type {
+  Annotation,
+  AnnotationFile,
+  DocText,
+  PlanningStep,
+  AgentQuestion,
+  Timeline,
+  TreeNode,
+  UnvoicedLine,
+} from "../shared/types.ts";
+import { PLANNING_STEPS } from "../shared/types.ts";
 
 export const VIDEO_EXTENSIONS = [".mp4", ".webm", ".mov", ".m4v", ".ogv"];
+
+/** Files Coanda opens as documents, to read, edit and comment on. */
+export function isDocument(name: string): boolean {
+  return name.toLowerCase().endsWith(".md");
+}
 
 export function isVideoFile(name: string): boolean {
   const lower = name.toLowerCase();
@@ -68,13 +92,68 @@ export class Store {
     return this.toRelative(file);
   }
 
+  /** Saves an image the reviewer pasted into a note and returns its path relative to the root. */
+  saveImage(video: string, image: Buffer, ext: string): string {
+    const dir = this.frameDir(video);
+    mkdirSync(dir, { recursive: true });
+    const file = join(dir, `pasted-${stampName()}.${ext}`);
+    writeFileSync(file, image);
+    return this.toRelative(file);
+  }
+
+  readDoc(doc: string): DocText | null {
+    const full = this.resolvePath(doc);
+    if (!existsSync(full)) return null;
+    return { text: readFileSync(full, "utf8"), mtime: statSync(full).mtimeMs };
+  }
+
+  /**
+   * Saves a document's text, unless it changed on disk since `baseMtime`, when it was read: then
+   * returns null and leaves the file alone.
+   */
+  writeDoc(doc: string, text: string, baseMtime: number): DocText | null {
+    const full = this.resolvePath(doc);
+    if (existsSync(full) && Math.abs(statSync(full).mtimeMs - baseMtime) > 1) return null;
+    writeFileSync(full, text);
+    return { text, mtime: statSync(full).mtimeMs };
+  }
+
+  /**
+   * Saves an image pasted into a document, in an `images` folder beside it, where it's kept
+   * with the document. Returns its path relative to the document, as the document links to it.
+   */
+  saveDocImage(doc: string, image: Buffer, ext: string): string {
+    const full = this.resolvePath(doc);
+    const dir = join(dirname(full), "images");
+    mkdirSync(dir, { recursive: true });
+    const name = `${basename(full).replace(/\.[^.]+$/, "")}-${stampName()}.${ext}`;
+    writeFileSync(join(dir, name), image);
+    return `images/${name}`;
+  }
+
+  /** Saves an image pasted into a project's chat, in the project's `.coanda/chat` folder. */
+  saveChatImage(project: string, image: Buffer, ext: string): string {
+    const dir = join(this.resolvePath(project), ".coanda", "chat");
+    mkdirSync(dir, { recursive: true });
+    const file = join(dir, `pasted-${stampName()}.${ext}`);
+    writeFileSync(file, image);
+    return this.toRelative(file);
+  }
+
+  /** Deletes a file Coanda saved beside a video, such as a frame or a pasted image. */
+  removeSaved(video: string, rel: string): void {
+    const full = this.resolvePath(rel);
+    if (dirname(full) !== this.frameDir(video)) return;
+    rmSync(full, { force: true });
+  }
+
   tree(): TreeNode[] {
     return this.scan(this.root);
   }
 
   private scan(dir: string): TreeNode[] {
     const folders: TreeNode[] = [];
-    const videos: TreeNode[] = [];
+    const files: TreeNode[] = [];
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
       const full = join(dir, entry.name);
@@ -92,7 +171,7 @@ export class Store {
         const path = this.toRelative(full);
         const { annotations } = this.read(path);
         const count = (test: (a: Annotation) => boolean) => annotations.filter(test).length;
-        videos.push({
+        files.push({
           name: entry.name,
           path,
           kind: "video",
@@ -101,10 +180,35 @@ export class Store {
           sent: count((a) => a.status === "sent"),
           mtime: statSync(full).mtimeMs,
         });
+      } else if (!entry.name.endsWith(".coanda.json")) {
+        let mtime: number | undefined;
+        try {
+          mtime = statSync(full).mtimeMs;
+        } catch {
+          // Gone or locked since it was listed; show it without a date.
+        }
+        const path = this.toRelative(full);
+        const node: TreeNode = { name: entry.name, path, kind: "file", mtime };
+        if (isDocument(entry.name) && existsSync(full + ".coanda.json")) {
+          const { annotations } = this.read(path);
+          node.unresolved = annotations.filter((a) => a.status !== "resolved").length;
+          node.open = annotations.filter((a) => a.status === "open").length;
+          node.sent = annotations.filter((a) => a.status === "sent").length;
+        }
+        files.push(node);
       }
     }
     const byName = (a: TreeNode, b: TreeNode) => a.name.localeCompare(b.name);
-    return [...folders.sort(byName), ...videos.sort(byName)];
+    // In a project, its planning documents come first, in the order they're written.
+    if (existsSync(join(dir, PROJECT_FILE))) {
+      const planned: TreeNode[] = [];
+      PLANNING_STEPS.forEach((step, i) => {
+        const at = files.findIndex((f) => f.kind === "file" && f.name === step.file);
+        if (at >= 0) planned.push({ ...files.splice(at, 1)[0], step: i + 1 });
+      });
+      return [...planned, ...folders.sort(byName), ...files.sort(byName)];
+    }
+    return [...folders.sort(byName), ...files.sort(byName)];
   }
 
   /** The video project a video belongs to: the nearest folder above it holding
@@ -120,6 +224,67 @@ export class Store {
   }
 
   /** Makes a folder a video project by writing an empty video-project.json in it. */
+  /** The project's planning documents and how far each has got. */
+  planningSteps(project: string): PlanningStep[] {
+    return PLANNING_STEPS.map((step) => {
+      const path = project ? `${project}/${step.file}` : step.file;
+      const full = this.resolvePath(path);
+      const exists = existsSync(full);
+      const data = exists ? this.read(path) : { annotations: [] };
+      const approved = data.approved;
+      return {
+        key: step.key,
+        title: step.title,
+        path,
+        exists,
+        ...(approved ? { approved: { by: approved.by, at: approved.at } } : {}),
+        changedSinceApproval:
+          exists && approved !== undefined && Math.abs(statSync(full).mtimeMs - approved.mtime) > 1,
+        unresolved: data.annotations.filter((a) => a.status !== "resolved").length,
+      };
+    });
+  }
+
+  /** Starts a planning document from Coanda's template, unless it's already there. */
+  startPlanningStep(project: string, key: string, template: string): string {
+    const step = PLANNING_STEPS.find((s) => s.key === key);
+    if (!step) throw new Error(`No planning step "${key}"`);
+    const path = project ? `${project}/${step.file}` : step.file;
+    const full = this.resolvePath(path);
+    if (!existsSync(full)) writeFileSync(full, template);
+    return path;
+  }
+
+  /** Marks a document approved as it is now, or withdraws the approval. */
+  approve(doc: string, by: string | null): void {
+    const mtime = statSync(this.resolvePath(doc)).mtimeMs;
+    this.update(doc, (data) => {
+      if (by) data.approved = { by, at: new Date().toISOString(), mtime };
+      else delete data.approved;
+    });
+  }
+
+  /** Claude's questions to the reviewer in a project, kept in its `.coanda` folder. */
+  questions(project: string): AgentQuestion[] {
+    try {
+      return JSON.parse(readFileSync(this.questionsFile(project), "utf8")) as AgentQuestion[];
+    } catch {
+      return [];
+    }
+  }
+
+  updateQuestions(project: string, change: (list: AgentQuestion[]) => void): AgentQuestion[] {
+    const list = this.questions(project);
+    change(list);
+    mkdirSync(dirname(this.questionsFile(project)), { recursive: true });
+    writeFileSync(this.questionsFile(project), JSON.stringify(list, null, 2) + "\n");
+    return list;
+  }
+
+  private questionsFile(project: string): string {
+    return join(this.resolvePath(project), ".coanda", "questions.json");
+  }
+
   makeProject(folder: string): void {
     const file = join(this.resolvePath(folder), PROJECT_FILE);
     if (!existsSync(file)) writeFileSync(file, "{}\n");
@@ -131,6 +296,53 @@ export class Store {
       if (existsSync(join(dir, PROJECT_FILE))) return this.toRelative(dir);
       if (dir === this.root || dirname(dir) === dir) return null;
       dir = dirname(dir);
+    }
+  }
+
+  /** The pipeline's timeline for the current render: `<name>.timeline.json` beside the video. */
+  timelinePath(video: string): string {
+    const full = this.resolvePath(video);
+    return join(dirname(full), basename(full).replace(/\.[^.]+$/, "") + ".timeline.json");
+  }
+
+  /** The timeline that the video's annotation times currently refer to. */
+  timelineBasePath(video: string): string {
+    return join(this.frameDir(video), "base.timeline.json");
+  }
+
+  /** Makes the current render's timeline the base, when there is one. */
+  setTimelineBase(video: string): void {
+    const now = this.timelinePath(video);
+    if (!existsSync(now)) return;
+    mkdirSync(this.frameDir(video), { recursive: true });
+    copyFileSync(now, this.timelineBasePath(video));
+  }
+
+  /** The video a `<name>.voice.json` belongs to: the video beside it with the same name. */
+  videoForReport(report: string): string | null {
+    const stem = report.slice(0, -".voice.json".length);
+    const ext = VIDEO_EXTENSIONS.find((e) => existsSync(this.resolvePath(stem + e)));
+    return ext ? stem + ext : null;
+  }
+
+  /** The unvoiced lines in a `<name>.voice.json`, as `coanda voice` writes it. */
+  readVoiceReport(report: string): { unvoiced: UnvoicedLine[] } | null {
+    try {
+      const data = JSON.parse(readFileSync(this.resolvePath(report), "utf8")) as {
+        unvoiced?: UnvoicedLine[];
+      };
+      return Array.isArray(data?.unvoiced) ? { unvoiced: data.unvoiced } : null;
+    } catch {
+      return null;
+    }
+  }
+
+  readTimeline(file: string): Timeline | null {
+    try {
+      const data = JSON.parse(readFileSync(file, "utf8").replace(/^\uFEFF/, "")) as Timeline;
+      return Array.isArray(data?.anchors) ? data : null;
+    } catch {
+      return null;
     }
   }
 
@@ -151,7 +363,7 @@ export class Store {
     const walk = (nodes: TreeNode[]) => {
       for (const n of nodes) {
         if (n.kind === "folder") walk(n.children ?? []);
-        else {
+        else if (n.kind === "video" || (n.kind === "file" && isDocument(n.name))) {
           const data = this.read(n.path);
           if (data.annotations.length) out.push({ video: n.path, ...data });
         }
@@ -164,4 +376,10 @@ export class Store {
   rootName(): string {
     return basename(this.root);
   }
+}
+
+/** A name part unique to this moment, such as 20261003T182413132Z-p2ib. */
+function stampName(): string {
+  const stamp = new Date().toISOString().replace(/[-:.]/g, "");
+  return `${stamp}-${Math.random().toString(36).slice(2, 6)}`;
 }

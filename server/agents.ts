@@ -6,30 +6,44 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import type { AgentMessage, AgentState, AgentStatus } from "../shared/types.ts";
+import { fileURLToPath } from "node:url";
+import { validSegments } from "./timeMap.ts";
+import type {
+  AgentMessage,
+  AgentState,
+  AgentStatus,
+  TimeSegment,
+  UnvoicedLine,
+  UsageLimits,
+  UsageWindow,
+} from "../shared/types.ts";
 
-export const PROTOCOL = `You are working with a reviewer through Coanda, a video review app.
-The reviewer watches the videos you make, annotates them, and sends the annotations to you.
+/** Coanda's instructions to every video session, kept in agent/guidance.md and read each time a
+ * session starts, so edits to it reach the next session without rebuilding anything. */
+const GUIDANCE_FILE = fileURLToPath(new URL("../agent/guidance.md", import.meta.url));
 
-Each send is a JSON list of annotations. Each has: video (path relative to the working folder),
-videoFile (absolute), id, t (seconds), kind ("pin" at x,y or "arrow" from x,y to x2,y2;
-percentages of the frame), text, author, thread (earlier replies), frameFile (a PNG of the
-annotated frame: read it, the position only makes sense against it), and voiceReady.
+function guidance(): string {
+  try {
+    // `<coanda>` in the guidance stands for the Coanda folder and `<node>` for the Node that
+    // runs Coanda, so it can name Coanda's commands. Coanda needs a newer Node than a project's
+    // PATH may find.
+    return readFileSync(GUIDANCE_FILE, "utf8")
+      .replaceAll(
+        "<coanda>",
+        fileURLToPath(new URL("..", import.meta.url))
+          .replaceAll("\\", "/")
+          .replace(/\/$/, ""),
+      )
+      .replaceAll("<node>", process.execPath.replaceAll("\\", "/"));
+  } catch {
+    return FALLBACK_GUIDANCE;
+  }
+}
 
-voiceReady is the video's "Ready for voice" switch. While it is false, do not generate new
-voice-over audio; it costs money. Reuse the existing narration or a placeholder.
-
-Make the changes, re-render to the same video file path, then end your turn with exactly one
-fenced block like this, answering every annotation you were sent:
-
-\`\`\`coanda
-{"status": "done", "replies": [{"video": "<video>", "id": 1, "text": "What you changed."}]}
-\`\`\`
-
-Use "status": "question" instead of "done" when you need the reviewer to answer or decide
-something before you can go on, and say what in your reply text or your message.
-The reviewer may also message you directly; end those turns with a coanda block too
-(with an empty replies list if there is nothing to answer).`;
+const FALLBACK_GUIDANCE = `You are working with a reviewer through Coanda, a video review app.
+Coanda's full instructions (agent/guidance.md in the Coanda repo) could not be read. Answer each
+annotation you are sent, end each turn with a fenced coanda block of replies, and do not
+generate voice-over or publish anything unless the reviewer asks for it in words.`;
 
 const MAX_MESSAGES = 400;
 
@@ -40,6 +54,32 @@ interface Session {
   proc?: ChildProcessWithoutNullStreams;
   /** Text of the assistant messages in the current turn, for finding the coanda block. */
   turnText: string[];
+  model?: string;
+  contextTokens?: number;
+  contextWindow?: number;
+  /** The instructions this conversation has: what its recorded system prompt holds, plus any
+   * update sent since in a message. */
+  instructions?: string;
+  /** The instructions the running process was started with. */
+  procInstructions?: string;
+  /**
+   * Messages sent to the running process, and how many of those it has started on (it echoes
+   * each one as it takes it up). A turn's result only ends the work once every message has
+   * started: resuming a conversation whose turn was cut off first ends that turn, with a result
+   * of its own.
+   */
+  sent?: number;
+  started?: number;
+  /** When the session last went from not working to working. */
+  workingSince?: string;
+  saveTimer?: ReturnType<typeof setTimeout>;
+}
+
+export interface ProjectLaunch {
+  args?: string[];
+  env?: Record<string, string>;
+  /** Added to Coanda's instructions for this project. */
+  instructions?: string;
 }
 
 export interface AgentOptions {
@@ -50,40 +90,107 @@ export interface AgentOptions {
   /** Where session IDs and transcripts are kept between runs. */
   sessionsFile: string;
   env?: Record<string, string>;
+  /** Extra arguments, environment and instructions for one project's process. */
+  launch?: (project: string) => ProjectLaunch;
   onChange: (project: string) => void;
-  onReply: (video: string, id: number, text: string) => void;
+  onReply: (video: string, id: number, reply: CoandaReply) => void;
+  /** A rendered video's time map: Coanda moves the video's annotations along it. */
+  onTimeMap: (video: string, segments: TimeSegment[]) => void;
+  /** A video was rendered this turn (it has an `unvoiced` entry) and came with no time map. */
+  onRenderedWithoutMap: (video: string) => void;
+  /** The unvoiced lines of a video Claude just rendered; an empty list means all are voiced. */
+  onUnvoiced: (video: string, lines: UnvoicedLine[]) => void;
+  /** Questions Claude asked the reviewer this turn. */
+  onQuestions: (project: string, questions: { text: string; options: string[] }[]) => void;
 }
 
 export class AgentManager {
   private sessions = new Map<string, Session>();
+  /** Usage limits belong to the Claude account, so one copy serves every session. */
+  private limits: UsageLimits = {};
   private opts: AgentOptions;
 
   constructor(opts: AgentOptions) {
     this.opts = opts;
+    const interrupted: string[] = [];
     for (const [project, saved] of Object.entries(this.loadSaved())) {
+      if (saved.working) interrupted.push(project);
       this.sessions.set(project, {
         status: "idle",
         sessionId: saved.sessionId,
         messages: saved.messages ?? [],
         turnText: [],
+        model: saved.model,
+        contextTokens: saved.contextTokens,
+        contextWindow: saved.contextWindow,
+        instructions: saved.instructions,
       });
     }
+    // Sessions that Coanda stopped mid-turn carry on, once whoever made this manager has it.
+    setTimeout(() => {
+      for (const project of interrupted) this.resumeInterrupted(project);
+    }, 0);
+  }
+
+  /** Restarts a session whose turn was cut off when Coanda stopped, telling it so. */
+  private resumeInterrupted(project: string): void {
+    const s = this.sessions.get(project);
+    if (!s || s.proc) return;
+    const last = s.messages.findLast((m) => m.role === "user")?.text;
+    this.send(
+      project,
+      "[Coanda] Coanda was restarted while you were working, which cut your turn off. Carry on " +
+        "from where you were, starting with a line saying what you're doing." +
+        (last ? ` In case it didn't reach you, the reviewer's last message was:\n\n${last}` : ""),
+      "Coanda restarted during this turn. Carrying on.",
+    );
   }
 
   state(project: string): AgentState {
     const s = this.sessions.get(project);
-    return { status: s?.status ?? "idle", messages: s?.messages ?? [], sessionId: s?.sessionId };
+    return {
+      status: s?.status ?? "idle",
+      messages: s?.messages ?? [],
+      sessionId: s?.sessionId,
+      model: s?.model,
+      contextTokens: s?.contextTokens,
+      contextWindow: s?.contextWindow,
+      limits: this.limits,
+      ...(s?.status === "working" && s.workingSince ? { workingSince: s.workingSince } : {}),
+    };
   }
 
   status(project: string): AgentStatus {
     return this.sessions.get(project)?.status ?? "idle";
   }
 
-  send(project: string, text: string, shown = text): void {
+  /** Sends a message to the project's session. `shown` is what the chat shows of it, with
+   * `images` the reviewer pasted in. */
+  send(project: string, text: string, shown = text, images: string[] = []): void {
     const s = this.session(project);
     if (!s.proc) this.start(project, s);
-    this.push(project, s, { role: "user", text: shown });
+    // Claude Code records a conversation's system prompt when it begins and re-sends that record
+    // on every resume, so instructions changed since then have to travel in a message.
+    // A slash command only runs when it starts the message, so it goes on its own, and changed
+    // instructions wait for the next ordinary message.
+    const current = this.instructionsFor(project);
+    if (s.sessionId && s.instructions !== current && !text.trimStart().startsWith("/")) {
+      text =
+        "[Coanda] Coanda's instructions to you have changed since this conversation began. " +
+        "These replace the earlier ones:\n\n" +
+        current +
+        "\n\n---\n\n" +
+        text;
+      s.instructions = current;
+      this.save();
+    }
+    this.push(project, s, { role: "user", text: shown, ...(images.length ? { images } : {}) });
+    // Slash commands aren't echoed, so they aren't counted.
+    if (!text.trimStart().startsWith("/")) s.sent = (s.sent ?? 0) + 1;
+    if (s.status !== "working") s.workingSince = new Date().toISOString();
     s.status = "working";
+    // On disk at once, so a Coanda stopped from now on knows to carry on with this turn.
+    this.save();
     s.turnText = [];
     s.proc!.stdin.write(
       JSON.stringify({ type: "user", message: { role: "user", content: text } }) + "\n",
@@ -100,8 +207,29 @@ export class AgentManager {
     this.opts.onChange(project);
   }
 
+  /** Stops the process if it is idle between turns, so the next message starts it afresh
+   * with new settings. A turn in progress is left to finish. */
+  restartWhenIdle(project: string): void {
+    const s = this.sessions.get(project);
+    if (s?.proc && s.status !== "working") {
+      s.proc.kill();
+      s.proc = undefined;
+    }
+  }
+
+  /** Stops every process as Coanda shuts down. A session that was working stays marked so,
+   * and carries on when Coanda next opens this folder. */
   stopAll(): void {
-    for (const s of this.sessions.values()) s.proc?.kill();
+    for (const s of this.sessions.values()) {
+      const proc = s.proc;
+      s.proc = undefined;
+      proc?.kill();
+    }
+  }
+
+  /** Coanda's guidance plus the project's own instructions, as a session should have them now. */
+  private instructionsFor(project: string, extra = this.opts.launch?.(project) ?? {}): string {
+    return extra.instructions ? `${guidance()}\n\n${extra.instructions}` : guidance();
   }
 
   private session(project: string): Session {
@@ -115,6 +243,11 @@ export class AgentManager {
 
   private start(project: string, s: Session) {
     const [cmd, ...base] = this.opts.command;
+    const extra = this.opts.launch?.(project) ?? {};
+    const instructions = this.instructionsFor(project, extra);
+    s.procInstructions = instructions;
+    // A new conversation records these as its system prompt; a resumed one keeps its record.
+    if (!s.sessionId) s.instructions = instructions;
     const args = [
       ...base,
       "-p",
@@ -123,15 +256,19 @@ export class AgentManager {
       "--output-format",
       "stream-json",
       "--verbose",
+      "--replay-user-messages",
       "--permission-mode",
       "auto",
       "--append-system-prompt",
-      PROTOCOL,
+      instructions,
+      ...(extra.args ?? []),
       ...(s.sessionId ? ["--resume", s.sessionId] : []),
     ];
+    s.sent = 0;
+    s.started = 0;
     const proc = spawn(cmd, args, {
       cwd: this.opts.cwd,
-      env: { ...process.env, ...this.opts.env },
+      env: { ...process.env, ...this.opts.env, ...extra.env },
       windowsHide: true,
     });
     s.proc = proc;
@@ -176,14 +313,70 @@ export class AgentManager {
       return;
     }
     if (m.type === "system" && m.subtype === "init" && m.session_id) {
-      if (s.sessionId !== m.session_id) {
-        s.sessionId = m.session_id;
-        this.save();
+      if (m.model) s.model = m.model;
+      if (s.sessionId !== m.session_id) s.sessionId = m.session_id;
+      this.save();
+      this.opts.onChange(project);
+      return;
+    }
+    if (m.type === "user" && m.isReplay) {
+      if (
+        typeof m.message?.content !== "string" ||
+        !m.message.content.trimStart().startsWith("/")
+      ) {
+        s.started = (s.started ?? 0) + 1;
       }
       return;
     }
+    if (m.type === "user" && typeof m.message?.content === "string") {
+      // Output of a command typed in the panel, such as /context. Compaction's own output is
+      // reported by compact_boundary below instead.
+      const out = /<local-command-stdout>([\s\S]*?)<\/local-command-stdout>/.exec(
+        m.message.content,
+      )?.[1];
+      if (out?.trim() && !out.trimStart().startsWith("Compacted")) {
+        this.push(project, s, { role: "tool", text: out.trim() });
+      }
+      return;
+    }
+    if (m.type === "system" && m.subtype === "compact_boundary") {
+      const meta = m.compact_metadata;
+      if (typeof meta?.post_tokens === "number") s.contextTokens = meta.post_tokens;
+      // Compacting records the system prompt afresh, from the text this process started with.
+      if (s.procInstructions) s.instructions = s.procInstructions;
+      if (meta?.pre_tokens !== undefined && meta.post_tokens !== undefined) {
+        this.push(project, s, {
+          role: "tool",
+          text: `Compacted: ${meta.pre_tokens.toLocaleString()} → ${meta.post_tokens.toLocaleString()} tokens`,
+        });
+      }
+      this.save();
+      return;
+    }
+    if (m.type === "rate_limit_event") {
+      const windows = m.rate_limit_info?.unifiedWindows;
+      const read = (w?: UsageWindow) =>
+        w && typeof w.utilization === "number"
+          ? { utilization: w.utilization, resetsAt: w.resetsAt }
+          : undefined;
+      this.limits = {
+        fiveHour: read(windows?.five_hour) ?? this.limits.fiveHour,
+        sevenDay: read(windows?.seven_day) ?? this.limits.sevenDay,
+      };
+      this.opts.onChange(project);
+      return;
+    }
     if (m.type === "assistant") {
-      for (const block of m.message?.content ?? []) {
+      const u = m.message?.usage;
+      if (u) {
+        s.contextTokens =
+          (u.input_tokens ?? 0) +
+          (u.cache_read_input_tokens ?? 0) +
+          (u.cache_creation_input_tokens ?? 0) +
+          (u.output_tokens ?? 0);
+      }
+      const content = m.message?.content;
+      for (const block of Array.isArray(content) ? content : []) {
         if (block.type === "text" && block.text?.trim()) {
           s.turnText.push(block.text);
           const shown = block.text.replace(/```coanda[\s\S]*?```/g, "").trim();
@@ -195,10 +388,59 @@ export class AgentManager {
       return;
     }
     if (m.type === "result") {
+      const windows = Object.values(m.modelUsage ?? {})
+        .map((x) => x.contextWindow)
+        .filter((n): n is number => typeof n === "number");
+      if (windows.length) s.contextWindow = Math.max(...windows);
       const block = lastCoandaBlock(s.turnText.join("\n"));
+      for (const [video, raw] of Object.entries(block?.timeMap ?? {})) {
+        const segments = validSegments(raw);
+        if (!segments.length) continue;
+        try {
+          this.opts.onTimeMap(video, segments);
+        } catch (err) {
+          this.push(project, s, { role: "error", text: (err as Error).message });
+        }
+      }
+      for (const video of Object.keys(block?.unvoiced ?? {})) {
+        if (block?.timeMap?.[video]) continue;
+        try {
+          this.opts.onRenderedWithoutMap(video);
+        } catch (err) {
+          this.push(project, s, { role: "error", text: (err as Error).message });
+        }
+      }
+      for (const [video, lines] of Object.entries(block?.unvoiced ?? {})) {
+        if (!Array.isArray(lines)) continue;
+        try {
+          this.opts.onUnvoiced(
+            video,
+            lines
+              .filter((l) => typeof l?.start === "number" && typeof l?.end === "number")
+              .map((l) => ({ start: l.start, end: l.end, text: String(l.text ?? "") })),
+          );
+        } catch (err) {
+          this.push(project, s, { role: "error", text: (err as Error).message });
+        }
+      }
+      const questions = (Array.isArray(block?.questions) ? block.questions : [])
+        .filter((q) => typeof q?.text === "string" && q.text.trim())
+        .map((q) => ({
+          text: (q.text as string).trim(),
+          options: Array.isArray(q.options)
+            ? q.options.filter((o): o is string => typeof o === "string" && !!o.trim())
+            : [],
+        }));
+      if (questions.length) {
+        try {
+          this.opts.onQuestions(project, questions);
+        } catch (err) {
+          this.push(project, s, { role: "error", text: (err as Error).message });
+        }
+      }
       for (const r of block?.replies ?? []) {
         try {
-          this.opts.onReply(r.video, Number(r.id), r.text);
+          this.opts.onReply(r.video, Number(r.id), r);
         } catch (err) {
           this.push(project, s, { role: "error", text: (err as Error).message });
         }
@@ -209,8 +451,8 @@ export class AgentManager {
           text: typeof m.result === "string" ? m.result : "Claude Code error",
         });
         s.status = "error";
-      } else {
-        s.status = block?.status === "question" ? "question" : "done";
+      } else if ((s.started ?? 0) >= (s.sent ?? 0)) {
+        s.status = block?.status === "question" || questions.length ? "question" : "done";
       }
       s.turnText = [];
       this.save();
@@ -221,16 +463,19 @@ export class AgentManager {
   private push(project: string, s: Session, message: Omit<AgentMessage, "at">) {
     s.messages.push({ ...message, at: new Date().toISOString() });
     if (s.messages.length > MAX_MESSAGES) s.messages.splice(0, s.messages.length - MAX_MESSAGES);
+    // Keep the transcript on disk as it grows, so stopping Coanda mid-turn loses none of it.
+    clearTimeout(s.saveTimer);
+    s.saveTimer = setTimeout(() => this.save(), 1000);
     this.opts.onChange(project);
   }
 
-  private loadSaved(): Record<string, { sessionId?: string; messages?: AgentMessage[] }> {
+  private loadSaved(): Record<string, SavedSession> {
     const file = this.opts.sessionsFile;
     if (!existsSync(file)) return {};
     try {
       const all = JSON.parse(readFileSync(file, "utf8")) as Record<
         string,
-        Record<string, { sessionId?: string; messages?: AgentMessage[] }>
+        Record<string, SavedSession>
       >;
       return all[this.opts.cwd.toLowerCase()] ?? {};
     } catch {
@@ -246,10 +491,18 @@ export class AgentManager {
     } catch {
       all = {};
     }
-    const mine: Record<string, { sessionId?: string; messages: AgentMessage[] }> = {};
+    const mine: Record<string, SavedSession> = {};
     for (const [project, s] of this.sessions) {
       if (s.sessionId || s.messages.length) {
-        mine[project] = { sessionId: s.sessionId, messages: s.messages };
+        mine[project] = {
+          sessionId: s.sessionId,
+          messages: s.messages,
+          model: s.model,
+          contextTokens: s.contextTokens,
+          contextWindow: s.contextWindow,
+          instructions: s.instructions,
+          working: s.status === "working",
+        };
       }
     }
     all[this.opts.cwd.toLowerCase()] = mine;
@@ -258,20 +511,64 @@ export class AgentManager {
   }
 }
 
+interface SavedSession {
+  sessionId?: string;
+  messages?: AgentMessage[];
+  model?: string;
+  contextTokens?: number;
+  contextWindow?: number;
+  instructions?: string;
+  /** It was working when last saved: Coanda stopped in the middle of its turn. */
+  working?: boolean;
+}
+
 interface StreamMessage {
   type: string;
   subtype?: string;
+  /** On a user message: Claude Code echoing a message it was sent, as it starts on it. */
+  isReplay?: boolean;
   session_id?: string;
+  model?: string;
   is_error?: boolean;
   result?: unknown;
   message?: {
-    content?: { type: string; text?: string; name?: string; input?: Record<string, unknown> }[];
+    /** Blocks for Claude's messages; a plain string for echoed user input and command output. */
+    content?:
+      | string
+      | { type: string; text?: string; name?: string; input?: Record<string, unknown> }[];
+    usage?: {
+      input_tokens?: number;
+      output_tokens?: number;
+      cache_read_input_tokens?: number;
+      cache_creation_input_tokens?: number;
+    };
+  };
+  modelUsage?: Record<string, { contextWindow?: number }>;
+  compact_metadata?: { pre_tokens?: number; post_tokens?: number };
+  rate_limit_info?: {
+    unifiedWindows?: { five_hour?: UsageWindow; seven_day?: UsageWindow };
   };
 }
 
-interface CoandaBlock {
+/** One reply in a turn's coanda block. */
+export interface CoandaReply {
+  video: string;
+  id: number;
+  text: string;
   status?: string;
-  replies?: { video: string; id: number; text: string }[];
+  /** The note's moment in the new render, in seconds, when a re-cut moved it. */
+  t?: number;
+}
+
+interface CoandaBlock {
+  /** Per video rendered with different timing, how the previous render's times map to the new. */
+  timeMap?: Record<string, unknown>;
+  /** Per video rendered this turn, its complete list of unvoiced lines. */
+  unvoiced?: Record<string, UnvoicedLine[]>;
+  status?: string;
+  replies?: CoandaReply[];
+  /** Questions for the reviewer, each answered on its own. */
+  questions?: { text?: unknown; options?: unknown }[];
 }
 
 function lastCoandaBlock(text: string): CoandaBlock | null {

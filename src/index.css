@@ -4,6 +4,7 @@
   --card: #0f1f3f;
   --card-active: #142a58;
   --popover: #12234a;
+  --bubble: #213f7d;
   --line: #16294f;
   --line-strong: #1c3570;
   --line-button: #1f3a73;
@@ -16,6 +17,9 @@
   --accent-mid: #4a7fe0;
   --accent-light: #6a9cf5;
   --link: #8fb5f8;
+  /* The contrasting colour, for what's done or comes in order: planning steps, approval. */
+  --go: #3fbf86;
+  --go-strong: #2a9a68;
   --font-body: "Instrument Sans", system-ui, sans-serif;
   --font-heading: "Bricolage Grotesque", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
@@ -34,6 +38,12 @@ body {
 
 * {
   box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-button) transparent;
+}
+
+*:hover {
+  scrollbar-color: var(--accent-strong) transparent;
 }
 
 ::placeholder {
