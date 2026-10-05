@@ -14,3 +14,18 @@ Docs are local at `node_modules/vite-plus/docs` or online at https://viteplus.de
 - [ ] If setup, runtime, or package-manager behavior looks wrong, run `vp env doctor` and include its output when asking for help.
 
 <!--VITE PLUS END-->
+
+# UI text
+
+Do not add explanatory text to the UI. Things that need a label get a short label, and nothing
+else gets text.
+
+- No instructions or hints ("Click the frame to comment", "Ctrl+↵ to save").
+- No empty-state messages ("No annotations yet", "Choose a video on the left"). Leave the area
+  empty.
+- No status sentences. A control's state says it: a Send button with nothing to send is
+  disabled, not relabelled "Nothing new to send".
+- No footnotes explaining what a button does.
+
+A count on a label ("Annotations 0 open") is fine. A placeholder in an input, kept to a few
+words, is fine.

@@ -1,4 +1,4 @@
-// coanda serve <folder> | coanda wait | coanda reply <video> <id> <text>
+// coanda serve [<folder>] | coanda wait | coanda reply <video> <id> <text>
 import { readFileSync } from "node:fs";
 import type { SentAnnotation } from "../shared/types.ts";
 import { serve } from "./serve.ts";
@@ -6,8 +6,9 @@ import { serve } from "./serve.ts";
 const DEFAULT_PORT = 4517;
 
 const USAGE = `Usage:
-  coanda serve <folder> [--port N] [--user NAME]
-      Serve the review app for the videos under <folder>.
+  coanda serve [<folder>] [--port N] [--user NAME]
+      Serve the review app for the videos under <folder>. Without <folder>, reopens the
+      folder used last time. The app can switch folders too.
   coanda wait [--port N] [--timeout SECONDS]
       Block until the reviewer clicks Send, then print the sent annotations as JSON.
   coanda reply <video> <id> <text> [--port N]
@@ -37,32 +38,44 @@ async function main() {
 
   switch (command) {
     case "serve": {
-      const root = positional[0];
-      if (!root) throw new UsageError("serve needs a folder");
-      const server = await serve({ root, port, user: flags.user });
-      console.log(`Coanda is serving ${root} at http://localhost:${server.port}`);
+      const server = await serve({ root: positional[0], port, user: flags.user });
+      const where = server.root ?? "no folder yet (choose one in the app)";
+      console.log(`Coanda is serving ${where} at http://localhost:${server.port}`);
       break;
     }
 
     case "wait": {
-      const timeout = flags.timeout ? Number(flags.timeout) * 1000 : undefined;
-      const signal = timeout ? AbortSignal.timeout(timeout) : undefined;
-      let sent: SentAnnotation[];
-      try {
-        const res = await fetch(`${base}/api/wait`, { signal });
-        sent = (await res.json()) as SentAnnotation[];
-      } catch (err) {
-        if (err instanceof Error && err.name === "TimeoutError") {
+      // Each request is answered after at most `hold` seconds, empty if nothing was sent,
+      // so keep asking until something arrives or --timeout runs out.
+      const deadline = flags.timeout ? Date.now() + Number(flags.timeout) * 1000 : Infinity;
+      let failures = 0;
+      for (;;) {
+        const left = Math.ceil((deadline - Date.now()) / 1000);
+        if (left <= 0) {
           console.log("[]");
           return;
         }
-        throw new Error(
-          `Could not reach the Coanda server at ${base}. Is \`coanda serve\` running?`,
-          { cause: err },
-        );
+        let sent: SentAnnotation[];
+        try {
+          const res = await fetch(`${base}/api/wait?hold=${Math.min(50, left)}`);
+          sent = (await res.json()) as SentAnnotation[];
+          failures = 0;
+        } catch (err) {
+          // Ride out a server restart, but not a server that is gone.
+          if (++failures > 5) {
+            throw new Error(
+              `Could not reach the Coanda server at ${base}. Is \`coanda serve\` running?`,
+              { cause: err },
+            );
+          }
+          await new Promise((r) => setTimeout(r, 2000));
+          continue;
+        }
+        if (sent.length) {
+          console.log(JSON.stringify(sent, null, 2));
+          return;
+        }
       }
-      console.log(JSON.stringify(sent, null, 2));
-      break;
     }
 
     case "reply": {

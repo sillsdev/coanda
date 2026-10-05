@@ -19,10 +19,10 @@ beforeEach(() => {
 
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 
-test("tree lists folders that hold videos, then videos, and skips everything else", () => {
+test("tree lists every folder, then the videos, and skips other files and hidden folders", () => {
   const tree = new Store(root).tree();
-  expect(tree.map((n) => n.path)).toEqual(["lessons", "intro.webm"]);
-  expect(tree[0].children?.map((n) => n.path)).toEqual(["lessons/one.mp4"]);
+  expect(tree.map((n) => n.path)).toEqual(["empty", "lessons", "intro.webm"]);
+  expect(tree[1].children?.map((n) => n.path)).toEqual(["lessons/one.mp4"]);
 });
 
 test("annotation counts come from the file next to the video", () => {

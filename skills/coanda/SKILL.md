@@ -21,6 +21,9 @@ while it is open.
 
    `node <coanda>/server/cli.ts serve <video folder>`
 
+   Leave out `<video folder>` to reopen the folder used last time. The user can also switch
+   folders in the app's sidebar.
+
    The server listens on port 4517 (`--port N` or `$COANDA_PORT` to change it). The Bash
    sandbox refuses to open listening sockets, so this command has to run outside it; ask the
    user to approve that. If the port is taken, a Coanda server may already be running there.
@@ -43,6 +46,10 @@ nothing was waiting). Each entry has:
 - `text`: what the reviewer asked for; `author`: who asked
 - `thread`: earlier replies, yours (`who: "claude"`) and the reviewer's (`who: "user"`).
   When the last message is the reviewer's, they are answering your earlier reply.
+- `voiceReady`: the video's **Ready for voice** switch, off by default. While it is off,
+  do **not** generate new voice-over audio (it costs money each time): reuse the existing
+  narration, or a placeholder, when you re-render. Generate the voice only once the reviewer
+  has turned it on.
 - `frameFile`: a PNG of the frame they annotated. **Read it**: the pin or arrow position is
   only meaningful against that picture.
 

@@ -1,0 +1,11 @@
+1
+00:00:00,500 --> 00:00:04,000
+Welcome to the sample video.
+
+2
+00:00:04,500 --> 00:00:08,000
+These subtitles come from welcome.en.srt.
+
+3
+00:00:08,500 --> 00:00:11,500
+Turn them on and off with the Subtitles button.

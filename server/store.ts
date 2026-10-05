@@ -1,6 +1,6 @@
 // Reads the reviewed folder and the annotation files kept next to each video.
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { Annotation, AnnotationFile, TreeNode } from "../shared/types.ts";
 
 export const VIDEO_EXTENSIONS = [".mp4", ".webm", ".mov", ".m4v", ".ogv"];
@@ -9,6 +9,9 @@ export function isVideoFile(name: string): boolean {
   const lower = name.toLowerCase();
   return VIDEO_EXTENSIONS.some((ext) => lower.endsWith(ext));
 }
+
+/** A folder holding this file is a video project, with its own Claude session. */
+export const PROJECT_FILE = "video-project.json";
 
 export class Store {
   readonly root: string;
@@ -78,9 +81,13 @@ export class Store {
       if (entry.isDirectory()) {
         if (entry.name.endsWith(".coanda")) continue;
         const children = this.scan(full);
-        if (children.length) {
-          folders.push({ name: entry.name, path: this.toRelative(full), kind: "folder", children });
-        }
+        folders.push({
+          name: entry.name,
+          path: this.toRelative(full),
+          kind: "folder",
+          children,
+          ...(existsSync(join(full, PROJECT_FILE)) ? { project: true } : {}),
+        });
       } else if (isVideoFile(entry.name)) {
         const path = this.toRelative(full);
         const { annotations } = this.read(path);
@@ -100,15 +107,53 @@ export class Store {
     return [...folders.sort(byName), ...videos.sort(byName)];
   }
 
-  /** Every video under the root that has annotations, with its annotations. */
-  allAnnotated(): { video: string; annotations: Annotation[] }[] {
-    const out: { video: string; annotations: Annotation[] }[] = [];
+  /** The video project a video belongs to: the nearest folder above it holding
+   * video-project.json, as a relative path ("" for the root). Null when there is none. */
+  projectFor(video: string): string | null {
+    return this.projectAbove(dirname(this.resolvePath(video)));
+  }
+
+  /** The video project a folder is in: itself or the nearest folder above it holding
+   * video-project.json, as a relative path ("" for the root). Null when there is none. */
+  projectForFolder(folder: string): string | null {
+    return this.projectAbove(this.resolvePath(folder));
+  }
+
+  /** Makes a folder a video project by writing an empty video-project.json in it. */
+  makeProject(folder: string): void {
+    const file = join(this.resolvePath(folder), PROJECT_FILE);
+    if (!existsSync(file)) writeFileSync(file, "{}\n");
+  }
+
+  private projectAbove(start: string): string | null {
+    let dir = start;
+    for (;;) {
+      if (existsSync(join(dir, PROJECT_FILE))) return this.toRelative(dir);
+      if (dir === this.root || dirname(dir) === dir) return null;
+      dir = dirname(dir);
+    }
+  }
+
+  /** Subtitle files beside a video: same name, optional language, .srt or .vtt. */
+  subtitlesFor(video: string): string[] {
+    const full = this.resolvePath(video);
+    const dir = dirname(full);
+    const name = basename(full).replace(/\.[^.]+$/, "");
+    return readdirSync(dir)
+      .filter((f) => f.startsWith(name + ".") && /\.(srt|vtt)$/i.test(f))
+      .sort()
+      .map((f) => this.toRelative(join(dir, f)));
+  }
+
+  /** Every video under the root that has annotations, with its annotation file. */
+  allAnnotated(): ({ video: string } & AnnotationFile)[] {
+    const out: ({ video: string } & AnnotationFile)[] = [];
     const walk = (nodes: TreeNode[]) => {
       for (const n of nodes) {
         if (n.kind === "folder") walk(n.children ?? []);
         else {
-          const { annotations } = this.read(n.path);
-          if (annotations.length) out.push({ video: n.path, annotations });
+          const data = this.read(n.path);
+          if (data.annotations.length) out.push({ video: n.path, ...data });
         }
       }
     };

@@ -1,13 +1,15 @@
+import type { ReactNode } from "react";
 import { avatarColor, initials } from "../format.ts";
 
 interface Props {
   rootName: string;
   video?: string;
   reviewers: string[];
+  children?: ReactNode;
 }
 
-export function Header({ rootName, video, reviewers }: Props) {
-  const crumbs = [rootName, ...(video ? video.split("/") : [])];
+export function Header({ rootName, video, reviewers, children }: Props) {
+  const crumbs = [rootName, ...(video ? video.split("/") : [])].filter(Boolean);
   return (
     <header className="app-header">
       <div className="brand">
@@ -24,7 +26,6 @@ export function Header({ rootName, video, reviewers }: Props) {
       </div>
       {reviewers.length > 0 && (
         <div className="reviewers">
-          <span>Reviewing</span>
           <div className="avatar-stack">
             {reviewers.map((name) => (
               <span
@@ -39,6 +40,7 @@ export function Header({ rootName, video, reviewers }: Props) {
           </div>
         </div>
       )}
+      {children}
     </header>
   );
 }
