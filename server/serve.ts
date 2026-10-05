@@ -13,6 +13,7 @@ import {
   type FSWatcher,
 } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { createHash } from "node:crypto";
 import { userInfo } from "node:os";
 import { dirname, extname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -33,7 +34,8 @@ import type {
 } from "../shared/types.ts";
 import { defaultConfigFile, loadConfig, saveConfig, withRoot } from "./config.ts";
 import { AgentManager } from "./agents.ts";
-import { osOpen, osReveal } from "./osOpen.ts";
+import { credits as openRouterCredits } from "../toolkit/openrouter.ts";
+import { osOpen, osReveal, osTrash } from "./osOpen.ts";
 import { mapFromTimelines, mapTime } from "./timeMap.ts";
 import { pickFolder } from "./pickFolder.ts";
 import { bloomLaunch, ProjectSettingsStore } from "./projectSettings.ts";
@@ -42,6 +44,13 @@ import { isDocument, isVideoFile, PROJECT_FILE, Store } from "./store.ts";
 const DIST = resolve(dirname(fileURLToPath(import.meta.url)), "..", "dist");
 /** Coanda's templates for planning documents. */
 const TEMPLATES = resolve(dirname(fileURLToPath(import.meta.url)), "..", "agent", "templates");
+
+/** Each planning step's template, by step key, read afresh so edits to them apply at once. */
+function planningTemplates(): Record<string, string> {
+  return Object.fromEntries(
+    PLANNING_STEPS.map((s) => [s.key, readFileSync(join(TEMPLATES, `${s.key}.md`), "utf8")]),
+  );
+}
 
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -69,6 +78,29 @@ function gitUserName(cwd: string): string {
     // Not a git checkout, or git is missing: fall back to the OS account name.
   }
   return userInfo().username;
+}
+
+/** The Gravatar picture for git's user.email, which Gravatar answers with a 404 when the
+ * address has none. */
+function gitGravatar(cwd: string): string | undefined {
+  try {
+    const email = execFileSync("git", ["config", "user.email"], { cwd, encoding: "utf8" })
+      .trim()
+      .toLowerCase();
+    if (!email) return undefined;
+    const hash = createHash("sha256").update(email).digest("hex");
+    return `https://gravatar.com/avatar/${hash}?s=80&d=404`;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The reviewer's name and, when Coanda knows their email, their picture. */
+function whoAmI(cwd: string, user: string | undefined): Pick<ServerInfo, "user" | "avatars"> {
+  if (user) return { user, avatars: {} };
+  const name = gitUserName(cwd);
+  const picture = gitGravatar(cwd);
+  return { user: name, avatars: picture ? { [name]: picture } : {} };
 }
 
 export interface ServeOptions {
@@ -99,8 +131,15 @@ export function serve(
   let agents: AgentManager | null = null;
   const claudeCommand = opts.claudeCommand ?? ["claude"];
   const keyFile = opts.elevenLabsKeyFile ?? join(dirname(configFile), "elevenlabs_key.txt");
+  const openRouterKeyFile = join(dirname(configFile), "openrouter_key.txt");
   const projectSettings = new ProjectSettingsStore(join(dirname(configFile), "projects.json"));
-  const info: ServerInfo = { root: null, rootName: "", user: opts.user ?? "", recent: [] };
+  const info: ServerInfo = {
+    root: null,
+    rootName: "",
+    user: opts.user ?? "",
+    avatars: {},
+    recent: [],
+  };
 
   /** The current folder's store; an error when no folder has been chosen yet. */
   const need = (): Store => {
@@ -259,9 +298,15 @@ export function serve(
           ...(model ? ["--model", model] : []),
           ...(effort ? ["--effort", effort] : []),
         ];
-        // The ElevenLabs key, for tools that make voice-over.
+        // The ElevenLabs key, for making voice-over, and the OpenRouter key, for images.
         if (existsSync(keyFile)) {
           launch.env = { ...launch.env, ELEVENLABS_API_KEY: readFileSync(keyFile, "utf8").trim() };
+        }
+        if (existsSync(openRouterKeyFile)) {
+          launch.env = {
+            ...launch.env,
+            OPENROUTER_API_KEY: readFileSync(openRouterKeyFile, "utf8").trim(),
+          };
         }
         return launch;
       },
@@ -271,7 +316,7 @@ export function serve(
     Object.assign(info, {
       root: full,
       rootName: store.rootName(),
-      user: opts.user ?? gitUserName(full),
+      ...whoAmI(full, opts.user),
       recent: config.recent,
     });
     emit({ type: "root" });
@@ -280,8 +325,7 @@ export function serve(
 
   const startRoot = opts.root ?? config.root;
   if (startRoot && existsSync(startRoot)) setRoot(startRoot);
-  else
-    Object.assign(info, { user: opts.user ?? gitUserName(process.cwd()), recent: config.recent });
+  else Object.assign(info, { ...whoAmI(process.cwd(), opts.user), recent: config.recent });
 
   const findAnnotation = (video: string, id: number, change: (a: Annotation) => void) => {
     let found = false;
@@ -359,7 +403,7 @@ export function serve(
 
     if (path === "/api/make-project" && method === "POST") {
       const folder = url.searchParams.get("folder") ?? "";
-      need().makeProject(folder);
+      need().makeProject(folder, planningTemplates());
       emit({ type: "tree" });
       return json(res, 200, { project: folder });
     }
@@ -388,9 +432,42 @@ export function serve(
       return json(res, 200, list);
     }
 
+    const forget = path.match(/^\/api\/questions\/(\d+)\/delete$/);
+    if (forget && method === "POST") {
+      if (project === null) throw new HttpError(400, "Give a project");
+      const id = Number(forget[1]);
+      const list = need().updateQuestions(project, (all) => {
+        const at = all.findIndex((x) => x.id === id);
+        if (at < 0) throw new HttpError(404, `No question ${id}`);
+        all.splice(at, 1);
+      });
+      emit({ type: "questions", project });
+      return json(res, 200, list);
+    }
+
     if (path === "/api/planning" && method === "GET") {
       if (project === null) throw new HttpError(400, "Give a project");
-      return json(res, 200, need().planningSteps(project));
+      return json(res, 200, need().planningSteps(project, planningTemplates()));
+    }
+
+    if (path === "/api/planning/draft" && method === "GET") {
+      if (project === null) throw new HttpError(400, "Give a project");
+      return json(res, 200, { requestedAt: need().draftRequested(project) });
+    }
+
+    // After the script, the draft video: Claude builds it from the planning documents.
+    if (path === "/api/planning/draft" && method === "POST") {
+      if (project === null) throw new HttpError(400, "Give a project");
+      need().requestDraft(project);
+      if (agents) {
+        agents.send(
+          project,
+          "[Coanda] The reviewer approved the script and asks for the draft video. Build it " +
+            "from the script as your guidance says for the draft video.",
+          "Make the draft video",
+        );
+      }
+      return json(res, 200, { requestedAt: need().draftRequested(project) });
     }
 
     if (path === "/api/planning/start" && method === "POST") {
@@ -509,6 +586,27 @@ export function serve(
       return json(res, 200, agents.state(project));
     }
 
+    if (path === "/api/rename" && method === "POST") {
+      const body = (await readJson(req)) as { path?: string; name?: string };
+      const store = need();
+      if (!body.path || !existsSync(store.resolvePath(body.path))) {
+        throw new HttpError(404, `Not found: ${body.path}`);
+      }
+      const renamed = store.rename(body.path, body.name ?? "");
+      emit({ type: "tree" });
+      return json(res, 200, { path: renamed });
+    }
+
+    if (path === "/api/delete" && method === "POST") {
+      const body = (await readJson(req)) as { path?: string };
+      const store = need();
+      const files = body.path ? store.withSidecars(body.path) : [];
+      if (!files.length) throw new HttpError(404, `Not found: ${body.path}`);
+      for (const f of files) osTrash(f);
+      emit({ type: "tree" });
+      return json(res, 200, { ok: true });
+    }
+
     if (path === "/api/reveal" && method === "POST") {
       const body = (await readJson(req)) as { path?: string };
       const full = need().resolvePath(body.path ?? "");
@@ -542,21 +640,58 @@ export function serve(
 
     if (path === "/api/claude-login" && method === "POST") {
       const [cmd, ...base] = claudeCommand;
-      spawn(cmd, [...base, "auth", "login"], { detached: true, stdio: "ignore" }).unref();
+      const child = spawn(cmd, [...base, "auth", "login"], { detached: true, stdio: "ignore" });
+      await new Promise<void>((resolveSpawn, rejectSpawn) => {
+        child.once("spawn", resolveSpawn);
+        child.once("error", (err: NodeJS.ErrnoException) =>
+          rejectSpawn(
+            err.code === "ENOENT"
+              ? new HttpError(500, "Claude Code is not installed")
+              : new HttpError(500, err.message),
+          ),
+        );
+      });
+      child.unref();
       return json(res, 200, { started: true });
     }
 
+    // Which keys are saved, as their first few characters, enough to tell keys apart, and their
+    // length.
+    const start = (file: string) => {
+      if (!existsSync(file)) return null;
+      const key = readFileSync(file, "utf8").trim();
+      return { start: key.slice(0, 13), length: key.length };
+    };
+    const keys = () => ({
+      elevenLabsKey: start(keyFile),
+      openRouterKey: start(openRouterKeyFile),
+    });
+
+    if (path === "/api/openrouter-credits" && method === "GET") {
+      if (!existsSync(openRouterKeyFile)) throw new HttpError(404, "No OpenRouter key");
+      return json(
+        res,
+        200,
+        await openRouterCredits(readFileSync(openRouterKeyFile, "utf8").trim()),
+      );
+    }
+
     if (path === "/api/settings" && method === "GET") {
-      return json(res, 200, { elevenLabsKey: existsSync(keyFile) });
+      return json(res, 200, keys());
     }
 
     if (path === "/api/settings" && method === "POST") {
-      const body = (await readJson(req)) as { elevenLabsKey?: string };
-      if (typeof body.elevenLabsKey === "string" && body.elevenLabsKey.trim()) {
-        mkdirSync(dirname(keyFile), { recursive: true });
-        writeFileSync(keyFile, body.elevenLabsKey.trim());
+      const body = (await readJson(req)) as { elevenLabsKey?: string; openRouterKey?: string };
+      for (const [value, file] of [
+        [body.elevenLabsKey, keyFile],
+        [body.openRouterKey, openRouterKeyFile],
+      ] as const) {
+        if (typeof value === "string" && value.trim()) {
+          mkdirSync(dirname(file), { recursive: true });
+          writeFileSync(file, value.trim());
+        }
       }
-      return json(res, 200, { elevenLabsKey: existsSync(keyFile) });
+      return json(res, 200, keys());
     }
 
     if (path === "/api/pick-folder" && method === "POST") {
@@ -774,7 +909,6 @@ export function serve(
 
     if (path === "/api/send" && method === "POST") {
       const store = need();
-      const { planApproval } = (await readJson(req)) as { planApproval?: boolean };
       // With a project, the project's open annotations go to its Claude session. Without one,
       // every open annotation goes to whoever runs `coanda wait`.
       const inProject = (v: string) =>
@@ -815,7 +949,7 @@ export function serve(
             "Annotations from the reviewer:\n\n" +
               JSON.stringify(
                 {
-                  ...projectSend(store, project, batch, Boolean(planApproval)),
+                  ...projectSend(store, project, batch),
                   answers: answered.map((q) => ({
                     question: q.text,
                     answer: q.answer!.text,
@@ -825,7 +959,7 @@ export function serve(
                 null,
                 2,
               ),
-            describeSend(batch, answered, Boolean(planApproval)),
+            describeSend(batch, answered),
           );
         }
       } else {
@@ -866,6 +1000,17 @@ export function serve(
       }
       claudeReply(body.video, Number(body.id), { text: body.text });
       return json(res, 200, { ok: true });
+    }
+
+    if (path === "/api/show" && method === "POST") {
+      const store = need();
+      const body = (await readJson(req)) as { video?: string };
+      if (!body.video) throw new HttpError(400, "show needs a video");
+      const full = store.resolvePath(body.video);
+      if (!existsSync(full)) throw new HttpError(404, `No video at ${body.video}`);
+      const video = store.toRelative(full);
+      emit({ type: "show", video });
+      return json(res, 200, { video });
     }
 
     if (path.startsWith("/media/")) {
@@ -928,17 +1073,19 @@ function claudeAuth(command: string[]): Promise<ClaudeAuth> {
     try {
       const child = spawn(cmd, [...base, "auth", "status", "--json"], { windowsHide: true });
       child.stdout.on("data", (b: Buffer) => (out += b.toString()));
-      child.on("error", () => resolvePromise({ loggedIn: false }));
+      child.on("error", (err: NodeJS.ErrnoException) =>
+        resolvePromise({ installed: err.code !== "ENOENT", loggedIn: false }),
+      );
       child.on("close", () => {
         try {
           const data = JSON.parse(out) as { loggedIn?: boolean; email?: string };
-          resolvePromise({ loggedIn: Boolean(data.loggedIn), email: data.email });
+          resolvePromise({ installed: true, loggedIn: Boolean(data.loggedIn), email: data.email });
         } catch {
-          resolvePromise({ loggedIn: false });
+          resolvePromise({ installed: true, loggedIn: false });
         }
       });
     } catch {
-      resolvePromise({ loggedIn: false });
+      resolvePromise({ installed: true, loggedIn: false });
     }
   });
 }
@@ -947,12 +1094,7 @@ function claudeAuth(command: string[]): Promise<ClaudeAuth> {
  * What a project's session receives when the reviewer presses Send: the project's recipe once,
  * and for each video its switch, a copy of the render as reviewed, and its annotations.
  */
-function projectSend(
-  store: Store,
-  project: string,
-  batch: SentAnnotation[],
-  planApproval: boolean,
-) {
+function projectSend(store: Store, project: string, batch: SentAnnotation[]) {
   const projectDir = store.resolvePath(project);
   let recipe: unknown = null;
   try {
@@ -1030,7 +1172,7 @@ function projectSend(
         })),
       };
     });
-  return { planApproval, recipe, videos, documents };
+  return { recipe, videos, documents };
 }
 
 const PASTED_TYPES: Record<string, string> = {
@@ -1064,11 +1206,7 @@ function textQuote(raw: unknown): TextQuote | undefined {
  * What the chat shows of a send: each note as the conversation it is, the reviewer's words and
  * Claude's replies in order. Claude itself gets the full details as JSON.
  */
-function describeSend(
-  batch: SentAnnotation[],
-  answered: AgentQuestion[],
-  planApproval: boolean,
-): string {
+function describeSend(batch: SentAnnotation[], answered: AgentQuestion[]): string {
   const time = (t: number) =>
     `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
   const notes = batch.map((a) => {
@@ -1086,7 +1224,7 @@ function describeSend(
     return [head, ...lines].join("\n");
   });
   const answers = answered.map((q) => `Claude: ${q.text}\n${q.answer!.by}: ${q.answer!.text}`);
-  return [...(planApproval ? ["Ask me before acting."] : []), ...answers, ...notes].join("\n\n");
+  return [...answers, ...notes].join("\n\n");
 }
 
 /** Moves every annotation on a video along a time map; a note whose moment was cut is marked. */

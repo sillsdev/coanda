@@ -118,6 +118,13 @@
   flex: none;
 }
 
+.avatar img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
 .avatar-stack .avatar + .avatar {
   margin-left: -7px;
 }
@@ -335,6 +342,10 @@
   flex: none;
 }
 
+.tree-icon.go {
+  color: var(--go);
+}
+
 .tree-icon.accent {
   color: var(--accent);
 }
@@ -343,6 +354,23 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.tree-rename {
+  flex: 1;
+  min-width: 0;
+  padding: 1px 4px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  outline: none;
+}
+
+.tree-approved {
+  flex: none;
+  color: var(--go);
 }
 
 .count-badge {
@@ -649,19 +677,13 @@
 
 .mark {
   position: absolute;
-  top: 0;
+  top: 2px;
   transform: translateX(-50%);
-  width: 18px;
-  height: 18px;
-  border-radius: 5px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
   background: #1f3f86;
-  color: #fff;
   border: 1px solid #2f5bb0;
-  font-size: 9.5px;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 .mark.resolved {
@@ -867,25 +889,6 @@
   gap: 12px;
 }
 
-.plan-approval {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12.5px;
-  color: var(--text-dim);
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.plan-approval input {
-  accent-color: var(--accent-strong);
-  width: 15px;
-  height: 15px;
-  margin: 0;
-  cursor: pointer;
-}
-
 .send-btn {
   flex: 1;
   min-width: 0;
@@ -977,6 +980,30 @@
   color: #d4e0f8;
 }
 
+.agent-tools {
+  display: flex;
+  flex-direction: column;
+  gap: inherit;
+  margin-top: -4px;
+}
+
+.agent-tools-toggle {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 11.5px;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+
+.agent-tools-toggle:hover {
+  color: var(--text-dim);
+}
+
 .agent-msg.tool {
   font: 11.5px/1.4 var(--font-mono);
   color: var(--text-faint);
@@ -1055,7 +1082,7 @@
 }
 
 .tree-row.project .tree-label {
-  font-weight: 600;
+  font-weight: 700;
 }
 
 /* Header keys */
@@ -1087,7 +1114,7 @@
   position: absolute;
   right: 0;
   top: 40px;
-  width: 300px;
+  width: 360px;
   z-index: 20;
   display: flex;
   flex-direction: column;
@@ -1130,7 +1157,9 @@
 }
 
 .context-menu button {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   width: 100%;
   padding: 7px 10px;
   border: 0;
@@ -1144,6 +1173,10 @@
 
 .context-menu button:not(:disabled):hover {
   background: var(--card-active);
+}
+
+.context-menu button.danger:hover {
+  color: #ff9aa8;
 }
 
 .context-menu button:disabled {
@@ -1385,7 +1418,12 @@
 }
 
 .card-delete {
+  margin-left: auto;
   opacity: 0;
+}
+
+.card-time ~ .card-delete {
+  margin-left: 0;
 }
 
 .card:hover .card-delete,
@@ -1867,9 +1905,37 @@
 /* Claude's questions in the annotations list */
 
 .question-card {
+  position: relative;
   background: rgba(63, 191, 134, 0.14);
   border-color: rgba(63, 191, 134, 0.45);
   cursor: default;
+}
+
+.question-card .chat-ai {
+  color: #e2f5ec;
+}
+
+.question-card a {
+  color: #7fe0b4;
+}
+
+.question-card .field {
+  background: rgba(10, 40, 28, 0.6);
+  border-color: rgba(63, 191, 134, 0.45);
+}
+
+.question-card .field:focus {
+  border-color: var(--go);
+}
+
+.question-card .btn-primary {
+  background: var(--go-strong);
+}
+
+.question-delete {
+  position: absolute;
+  top: 8px;
+  right: 8px;
 }
 
 .question-card:hover {
@@ -1899,4 +1965,50 @@
 .tree-chevron {
   display: inline-flex;
   flex: none;
+}
+
+.key-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.key-field + .key-field {
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.key-row {
+  display: flex;
+  gap: 8px;
+}
+
+.key-row .field {
+  flex: 1;
+  min-width: 0;
+}
+
+.key-masked {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-soft);
+  word-break: break-all;
+}
+
+.key-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.key-note {
+  font-size: 12px;
+  color: var(--go);
+}
+
+.empty-hint {
+  margin: 4px 6px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-faint);
 }

@@ -29,3 +29,6 @@ playwright-report
 
 # Videos
 *.mp4
+
+# Git Bash crash dumps
+*.stackdump

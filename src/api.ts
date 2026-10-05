@@ -31,6 +31,18 @@ const post = <T>(path: string, body?: unknown) =>
 const q = (video: string) => `video=${encodeURIComponent(video)}`;
 const p = (project: string) => `project=${encodeURIComponent(project)}`;
 
+/** A saved API key, as its first 13 characters and its length. */
+export interface KeyStart {
+  start: string;
+  length: number;
+}
+
+/** The saved API keys; null where there is none. */
+export interface SavedKeys {
+  elevenLabsKey: KeyStart | null;
+  openRouterKey: KeyStart | null;
+}
+
 export interface NewAnnotation {
   kind: "pin" | "arrow" | "text";
   quote?: TextQuote;
@@ -75,10 +87,9 @@ export const api = {
   remove: (video: string, id: number) =>
     post<Annotation[]>(`/api/annotations/${id}/delete?${q(video)}`),
   /** With a project, its open annotations go to the project's Claude session. */
-  send: (project?: string | null, planApproval = false) =>
+  send: (project?: string | null) =>
     post<{ sent: number }>(
       project == null ? "/api/send" : `/api/send?project=${encodeURIComponent(project)}`,
-      { planApproval },
     ),
   /** Asks the project's session to record the video's missing voice, plan first. */
   voicePass: (project: string, video: string) =>
@@ -92,6 +103,9 @@ export const api = {
     post<AgentState>(`/api/agent/message?${p(project)}`, { text, images }),
   doc: (doc: string) => request<DocText>(`/api/doc?${q(doc)}`),
   questions: (project: string) => request<AgentQuestion[]>(`/api/questions?${p(project)}`),
+  /** Removes one of Claude's questions from the list. */
+  deleteQuestion: (project: string, id: number) =>
+    post<AgentQuestion[]>(`/api/questions/${id}/delete?${p(project)}`, {}),
   /** Answers one of Claude's questions; an empty answer takes the answer back. */
   answer: (project: string, id: number, text: string) =>
     post<AgentQuestion[]>(`/api/questions/${id}/answer?${p(project)}`, { text }),
@@ -100,6 +114,12 @@ export const api = {
    * reviewer. */
   startPlanning: (project: string, step: string) =>
     post<{ path: string }>(`/api/planning/start?${p(project)}&step=${encodeURIComponent(step)}`),
+  /** When the draft video was asked for, or null. */
+  draft: (project: string) =>
+    request<{ requestedAt: string | null }>(`/api/planning/draft?${p(project)}`),
+  /** Asks Claude to build the draft video from the approved script. */
+  makeDraft: (project: string) =>
+    post<{ requestedAt: string | null }>(`/api/planning/draft?${p(project)}`),
   approve: (doc: string, approved: boolean) =>
     post<{ ok: true }>(`/api/approve?${q(doc)}`, { approved }),
   /** Saves a document; refused if it changed on disk since `baseMtime`. */
@@ -121,14 +141,20 @@ export const api = {
   claudeAuth: () => request<ClaudeAuth>("/api/claude-auth"),
   /** Shows a path in the reviewed folder, selected, in File Explorer. */
   reveal: (path: string) => post<{ path: string }>("/api/reveal", { path }),
+  rename: (path: string, name: string) => post<{ path: string }>("/api/rename", { path, name }),
+  deleteFile: (path: string) => post<{ ok: true }>("/api/delete", { path }),
   /** Opens a file or folder with its default app; a relative path is tried against the
    * reviewed folder, then the project's folders. */
   openPath: (path: string, project?: string | null) =>
     post<{ path: string }>(project == null ? "/api/open" : `/api/open?${p(project)}`, { path }),
   claudeLogin: () => post<{ started: boolean }>("/api/claude-login"),
-  settings: () => request<{ elevenLabsKey: boolean }>("/api/settings"),
-  saveElevenLabsKey: (key: string) =>
-    post<{ elevenLabsKey: boolean }>("/api/settings", { elevenLabsKey: key }),
+  /** What's left on the OpenRouter account, in dollars. */
+  openRouterCredits: () =>
+    request<{ total: number; used: number; remaining: number }>("/api/openrouter-credits"),
+  /** Which API keys are saved. */
+  settings: () => request<SavedKeys>("/api/settings"),
+  saveKey: (which: keyof SavedKeys, key: string) =>
+    post<SavedKeys>("/api/settings", { [which]: key }),
   videoInfo: (video: string) => request<VideoInfo>(`/api/video?${q(video)}`),
 };
 

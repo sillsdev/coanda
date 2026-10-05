@@ -133,7 +133,7 @@ test("write a brief, paste screenshots into it, comment on it, and answer Claude
     expect(await highlighted(page)).toEqual({ other: 0, active: 1 });
 
     // Send it: Claude gets the passage, the comment and the screenshot's path.
-    await expect(page.getByTestId("send")).toHaveText("Send 1 to Chat");
+    await expect(page.getByTestId("send")).toHaveText("Send 1 to Claude");
     await page.getByTestId("send").click();
     await expect(card).toHaveAttribute("data-status", "replied");
     // The chat shows what was sent as the conversation it is, not a count.
@@ -205,7 +205,6 @@ test("plan a video: start the brief from the project page, approve it, and go on
   const root = join(scratch, "videos");
   cpSync(join(repo, "samples"), root, { recursive: true });
   const project = join(root, "getting-started");
-  writeFileSync(join(project, "video-project.json"), "{}\n");
   const fakeState = join(scratch, "fake-claude");
   mkdirSync(fakeState);
   process.env.FAKE_CLAUDE_STATE = fakeState;
@@ -221,11 +220,32 @@ test("plan a video: start the brief from the project page, approve it, and go on
   try {
     await page.goto(`http://127.0.0.1:${server.port}/`);
 
+    // Making a project puts its planning documents in it at once, numbered, ahead of its files.
+    await page.locator('[data-path="getting-started"]').click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Make project here" }).click();
+    await expect(page.locator(".tree-row.planning .tree-label")).toHaveText([
+      "brief.md",
+      "outline.md",
+      "script.md",
+    ]);
+    await expect(page.locator(".tree-row.planning .tree-step")).toHaveText(["1", "2", "3"]);
+    for (const name of ["brief", "outline", "script"]) {
+      expect(readFileSync(join(project, `${name}.md`), "utf8")).toBe(
+        readFileSync(join(repo, "agent", "templates", `${name}.md`), "utf8"),
+      );
+    }
+
     // Clicking the project's folder shows its page: the planning documents, in order.
     await page.locator('[data-path="getting-started"]').click();
     const home = page.getByTestId("project-home");
-    await expect(home.locator(".step-title")).toHaveText(["Brief", "Outline", "Script"]);
+    await expect(home.locator(".step-title")).toHaveText([
+      "Brief",
+      "Outline",
+      "Script",
+      "Draft video",
+    ]);
     await expect(home.locator(".step-state")).toHaveText([
+      "Not started",
       "Not started",
       "Not started",
       "Not started",
@@ -261,7 +281,28 @@ test("plan a video: start the brief from the project page, approve it, and go on
     await expect(page.getByTestId("doc-page").locator(".md-h1")).toHaveText("Outline");
     await expect(log.locator(".agent-msg.user").last()).toHaveText("Started the outline");
     await page.locator('[data-path="getting-started"]').click();
-    await expect(home.locator(".step-state")).toHaveText(["Approved", "Draft", "Not started"]);
+    await expect(home.locator(".step-state")).toHaveText([
+      "Approved",
+      "Draft",
+      "Not started",
+      "Not started",
+    ]);
+    await expect(
+      page.getByTestId("step-draft").getByRole("button", { name: "Make" }),
+    ).toBeDisabled();
+
+    // The outline leads to the script, and the approved script to the draft video.
+    await page.locator('[data-path="getting-started/outline.md"]').click();
+    await page.getByTestId("approve").click();
+    await page.getByTestId("next-step").click();
+    await expect(page.getByTestId("doc-page").locator(".md-h1")).toHaveText("Script");
+    await page.getByTestId("approve").click();
+    await expect(page.getByTestId("next-step")).toHaveText("Make draft video");
+    await page.getByTestId("next-step").click();
+    await expect(log.locator(".agent-msg.user").last()).toHaveText("Make the draft video");
+    await expect(page.getByTestId("next-step")).toHaveCount(0);
+    await page.locator('[data-path="getting-started"]').click();
+    await expect(page.getByTestId("step-draft").locator(".step-state")).toHaveText("Asked for");
 
     // A change to an approved brief shows, and it needs approving again before going on.
     writeFileSync(join(project, "brief.md"), "# Brief\n\nChanged.\n");
@@ -322,7 +363,7 @@ test("Claude's questions each get a card to answer, and the answers go with Send
     await expect(second.locator(".chat-human")).toHaveText("Spanish");
 
     // The answers go to Claude with Send, and the cards are done.
-    await expect(page.getByTestId("send")).toHaveText("Send 2 to Chat");
+    await expect(page.getByTestId("send")).toHaveText("Send 2 to Claude");
     await page.getByTestId("send").click();
     await expect(first).toHaveCount(0);
     await expect.poll(lastMessage).toContain('"answer": "Spanish"');

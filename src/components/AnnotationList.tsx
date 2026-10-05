@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import type { AgentQuestion, Annotation } from "../../shared/types.ts";
 import type { NoteEdit } from "../api.ts";
-import { avatarColor, formatTime, initials } from "../format.ts";
+import { formatTime } from "../format.ts";
 import { ArrowIcon, ArrowRightIcon, CheckIcon, PencilIcon, TrashIcon } from "./icons.tsx";
 import { Markdown } from "./Linkify.tsx";
 import { usePastedImages } from "../pastedImages.ts";
 import { Thumbs } from "./PastedImages.tsx";
+import { Avatar } from "./Avatar.tsx";
 
 const REPLY_STATUS = { partial: "Partial", voice: "Needs voice", question: "Question" };
 
@@ -23,13 +24,12 @@ interface Props {
   /** Open annotations across every video in the folder. */
   openTotal: number;
   onSend: () => void;
-  planApproval: boolean;
-  onPlanApproval: (on: boolean) => void;
   onOpenPath: (path: string) => void;
   /** Claude's questions in this project. */
   questions: AgentQuestion[];
   /** Answers a question; an empty answer takes it back. */
   onAnswer: (q: AgentQuestion, text: string) => void;
+  onDeleteQuestion: (q: AgentQuestion) => void;
 }
 
 export function AnnotationList(props: Props) {
@@ -99,7 +99,7 @@ export function AnnotationList(props: Props) {
   return (
     <section className="panel">
       <div className="panel-head">
-        <div className="panel-title">Annotations</div>
+        <div className="panel-title">TODOs &amp; Questions</div>
         <span className="open-badge" data-testid="unresolved-count">
           {unresolved.length} open
         </span>
@@ -115,9 +115,15 @@ export function AnnotationList(props: Props) {
             key={`q${q.id}`}
             question={q}
             onAnswer={(text) => props.onAnswer(q, text)}
+            onDelete={() => props.onDeleteQuestion(q)}
             onOpenPath={props.onOpenPath}
           />
         ))}
+        {!asking.length && !shown.length && (
+          <p className="empty-hint">
+            To add an item here, highlight text or click in a paused video.
+          </p>
+        )}
         {shown.map((a) => {
           const isActive = a.id === activeId;
           const last = a.thread.at(-1);
@@ -136,13 +142,7 @@ export function AnnotationList(props: Props) {
             >
               <div className="card-head">
                 <span className="num">{a.id}</span>
-                <span
-                  className="avatar tiny"
-                  title={a.author}
-                  style={{ background: avatarColor(a.author) }}
-                >
-                  {initials(a.author)}
-                </span>
+                <Avatar name={a.author} className="tiny" />
                 <span className="card-author">{a.author}</span>
                 {a.cut && (
                   <span
@@ -268,21 +268,13 @@ export function AnnotationList(props: Props) {
         })}
       </div>
       <div className="panel-foot">
-        <label className="plan-approval">
-          <input
-            type="checkbox"
-            checked={props.planApproval}
-            onChange={(e) => props.onPlanApproval(e.target.checked)}
-          />
-          Ask me before acting
-        </label>
         <button
           className="send-btn"
           data-testid="send"
           onClick={props.onSend}
           disabled={!openTotal}
         >
-          {openTotal ? `Send ${openTotal} to Chat` : "Send to Chat"}
+          {openTotal ? `Send ${openTotal} to Claude` : "Send to Claude"}
           <ArrowRightIcon className="send-arrow" />
         </button>
       </div>
@@ -378,16 +370,21 @@ function NoteEditor({
 function QuestionCard({
   question,
   onAnswer,
+  onDelete,
   onOpenPath,
 }: {
   question: AgentQuestion;
   onAnswer: (text: string) => void;
+  onDelete: () => void;
   onOpenPath: (path: string) => void;
 }) {
   const [text, setText] = useState("");
   const answer = question.answer;
   return (
     <div className="card question-card" data-testid={`question-${question.id}`}>
+      <button className="mini-btn card-delete question-delete" title="Delete" onClick={onDelete}>
+        <TrashIcon />
+      </button>
       <div className="chat">
         <div className="chat-ai">
           <Markdown text={question.text} onOpenPath={onOpenPath} />

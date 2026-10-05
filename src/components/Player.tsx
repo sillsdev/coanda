@@ -10,10 +10,11 @@ import {
 } from "react";
 import type { Annotation, UnvoicedLine } from "../../shared/types.ts";
 import type { NewAnnotation } from "../api.ts";
-import { avatarColor, formatTime, initials } from "../format.ts";
+import { formatTime } from "../format.ts";
 import { CaptionsIcon, MicIcon, PauseIcon, PlayIcon } from "./icons.tsx";
 import { usePastedImages } from "../pastedImages.ts";
 import { Thumbs } from "./PastedImages.tsx";
+import { Avatar } from "./Avatar.tsx";
 
 /** How close (in seconds) the playhead must be for an annotation to show on the frame. */
 const SHOW_WINDOW = 1.5;
@@ -442,9 +443,7 @@ export function Player(props: Props) {
               onPointerUp={(e) => e.stopPropagation()}
             >
               <div className="draft-head">
-                <span className="avatar small" style={{ background: avatarColor(me) }}>
-                  {initials(me)}
-                </span>
+                <Avatar name={me} className="small" />
                 <span className="draft-name">{me}</span>
                 <span className="draft-meta mono">
                   {draft.kind === "arrow" ? "ARROW" : "PIN"} · {formatTime(t)}
@@ -528,9 +527,7 @@ export function Player(props: Props) {
                   e.stopPropagation();
                   props.onSelect(a);
                 }}
-              >
-                {a.id}
-              </div>
+              />
             ))}
         </div>
         <span className="time mono" data-testid="time">
