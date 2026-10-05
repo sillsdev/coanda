@@ -127,6 +127,10 @@ export async function startRecorder(opts: RecorderOptions) {
   let frameNumber = 0;
   let capturing = false;
   let capturers: Promise<void>[] = [];
+  // Chrome gives wrong images for full screenshots taken while a clipped one is in progress,
+  // so the capture loop holds off while stillIn takes its clipped ones.
+  let probing: Promise<void> | null = null;
+  let inFlight = 0;
   const events: TakeEvents["events"] = [];
   const markings: Marking[] = [];
   /** Boxes and arrows on screen, by their keys. */
@@ -167,15 +171,24 @@ export async function startRecorder(opts: RecorderOptions) {
       capturing = true;
       capturers = Array.from({ length: 3 }, async () => {
         while (capturing) {
-          const { data } = await cdp.send("Page.captureScreenshot", {
-            format: "jpeg",
-            quality: 90,
-            optimizeForSpeed: true,
-          });
-          const t = Date.now() / 1000;
-          const file = `f${String(frameNumber++).padStart(5, "0")}.jpg`;
-          writeFileSync(join(takeDir, "frames", file), Buffer.from(data, "base64"));
-          frames.push({ file, t });
+          if (probing) {
+            await probing;
+            continue;
+          }
+          inFlight++;
+          try {
+            const { data } = await cdp.send("Page.captureScreenshot", {
+              format: "jpeg",
+              quality: 90,
+              optimizeForSpeed: true,
+            });
+            const t = Date.now() / 1000;
+            const file = `f${String(frameNumber++).padStart(5, "0")}.jpg`;
+            writeFileSync(join(takeDir, "frames", file), Buffer.from(data, "base64"));
+            frames.push({ file, t });
+          } finally {
+            inFlight--;
+          }
         }
       });
     },
@@ -488,9 +501,21 @@ export async function startRecorder(opts: RecorderOptions) {
     let same = 0;
     while (same < 2 && Date.now() < end) {
       await page.waitForTimeout(100);
-      const { data } = await cdp.send("Page.captureScreenshot", { format: "png", clip });
+      const data = await clipped(clip);
       same = data === last ? same + 1 : 0;
       last = data;
+    }
+  };
+  /** A clipped screenshot, taken with no frame capture in progress. */
+  const clipped = async (clip: Box & { scale: number }) => {
+    let release = () => {};
+    probing = new Promise<void>((resolve) => (release = resolve));
+    try {
+      while (inFlight > 0) await page.waitForTimeout(5);
+      return (await cdp.send("Page.captureScreenshot", { format: "png", clip })).data;
+    } finally {
+      probing = null;
+      release();
     }
   };
 
