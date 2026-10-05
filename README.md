@@ -1,11 +1,11 @@
-# HowReel
 
-<img src="public/logo.svg" alt="HowReel logo" width="200">
 
-HowReel is a web app for working with Claude while it makes instructional videos. A Claude Code
-skill launches it. The first version lets you annotate a video Claude has made, so you can give
-feedback or ask for changes.
-<img width="2800" height="1528" alt="image" src="https://github.com/user-attachments/assets/9f2c7e6f-332d-44a9-bb96-f16b3f7b38cc" />
+# <img src="public/logo.svg" alt="HowReel logo" width="200"> HowReel
+
+HowReel is a tool making instructional videos collaboratively with an AI. 
+
+<img width="2791" height="1513" alt="image" src="https://github.com/user-attachments/assets/5c88f98f-45f5-46cc-944f-62a70ae9ea27" />
+
 
 ## Development
 
