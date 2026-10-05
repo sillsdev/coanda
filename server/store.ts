@@ -30,7 +30,7 @@ import { PLANNING_STEPS, PROJECT_VIDEOS } from "../shared/types.ts";
 
 export const VIDEO_EXTENSIONS = [".mp4", ".webm", ".mov", ".m4v", ".ogv"];
 
-/** Files Howbench opens as documents, to read, edit and comment on. */
+/** Files HowBench opens as documents, to read, edit and comment on. */
 /** A project's draft or voiced video, anywhere in the project, numbered after the planning
  * documents. */
 function videoStep(name: string): { step: number } | Record<string, never> {
@@ -80,7 +80,7 @@ export class Store {
   }
 
   /**
-   * A file and Howbench's own files beside it: its annotations and saved frames. For a video, also
+   * A file and HowBench's own files beside it: its annotations and saved frames. For a video, also
    * the render's files named after it (subtitles, timeline, voice report), unless another video
    * beside it has the same name and so shares them.
    */
@@ -104,7 +104,7 @@ export class Store {
     return files.filter((f) => existsSync(f));
   }
 
-  /** Renames a file, and Howbench's files beside it, within its folder. Returns its new path. */
+  /** Renames a file, and HowBench's files beside it, within its folder. Returns its new path. */
   rename(path: string, name: string): string {
     name = name.trim();
     if (!name || /[\\/:*?"<>|]/.test(name) || name === "." || name === "..") {
@@ -254,7 +254,7 @@ export class Store {
     return this.toRelative(file);
   }
 
-  /** Deletes a file Howbench saved beside a video, such as a frame or a pasted image. */
+  /** Deletes a file HowBench saved beside a video, such as a frame or a pasted image. */
   removeSaved(video: string, rel: string): void {
     const full = this.resolvePath(rel);
     if (dirname(full) !== this.frameDir(video)) return;
@@ -373,7 +373,7 @@ export class Store {
     });
   }
 
-  /** Starts a planning document from Howbench's template, unless it's already there. */
+  /** Starts a planning document from HowBench's template, unless it's already there. */
   startPlanningStep(project: string, key: string, template: string): string {
     const step = PLANNING_STEPS.find((s) => s.key === key);
     if (!step) throw new Error(`No planning step "${key}"`);

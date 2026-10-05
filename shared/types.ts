@@ -90,7 +90,7 @@ export interface AnnotationFile {
 
 /**
  * A render's timeline, written by the pipeline beside the video as `<name>.timeline.json`: the
- * named moments in it (narration lines, actions) and when they happen. Howbench lines up the
+ * named moments in it (narration lines, actions) and when they happen. HowBench lines up the
  * reviewed render's timeline with the new one to move annotations after a re-cut. An anchor
  * with `say` is a narration line, and `say` is its words.
  */
@@ -216,7 +216,7 @@ export interface TreeNode {
 }
 
 /**
- * idle: no turn has run since Howbench started. working: Claude is on a turn.
+ * idle: no turn has run since HowBench started. working: Claude is on a turn.
  * done: Claude finished its turn. question: Claude finished and needs the reviewer.
  * error: the turn failed or Claude Code stopped.
  */

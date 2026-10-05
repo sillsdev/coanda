@@ -9,12 +9,12 @@ $parent = if ($env:HOWBENCH_PARENT_PID) { Get-Process -Id ([int]$env:HOWBENCH_PA
 $last = $null
 while ($true) {
     $t = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() / 1000
-    if (-not [HowbenchWin]::IsWindow($h)) {
+    if (-not [HowBenchWin]::IsWindow($h)) {
         Write-Json ([ordered]@{ t = $t; above = @(); minimized = $false; gone = $true })
         break
     }
     if ($parent -and $parent.HasExited) { break }
-    $info = Get-WindowInfo $h ([HowbenchWin]::TopLevel())
+    $info = Get-WindowInfo $h ([HowBenchWin]::TopLevel())
     $now = ConvertTo-Json -InputObject @($info.above, $info.minimized) -Depth 6 -Compress
     if ($now -ne $last) {
         Write-Json ([ordered]@{ t = $t; above = @($info.above); minimized = $info.minimized; gone = $false })

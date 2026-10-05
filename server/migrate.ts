@@ -1,7 +1,7 @@
-// Howbench was called Coanda, and review data written then still carries that name: the
+// HowBench was called Coanda, and review data written then still carries that name: the
 // settings folder in the home folder, and beside reviewed files `<file>.coanda.json`, a
-// `<file>.coanda` folder and a project's `.coanda` folder. These move to Howbench's names the
-// first time Howbench sees them, and paths inside the moved JSON files are rewritten to match.
+// `<file>.coanda` folder and a project's `.coanda` folder. These move to HowBench's names the
+// first time HowBench sees them, and paths inside the moved JSON files are rewritten to match.
 import { existsSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";

@@ -202,7 +202,7 @@ function App() {
     if (!auth) void api.claudeAuth().then(setAuth);
   }, [project, loadAgent, auth]);
 
-  // Until Claude Code is installed and logged in, keep asking: both happen outside Howbench.
+  // Until Claude Code is installed and logged in, keep asking: both happen outside HowBench.
   const loggedIn = auth?.loggedIn ?? true;
   useEffect(() => {
     if (loggedIn) return;

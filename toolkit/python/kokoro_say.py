@@ -1,4 +1,4 @@
-"""Says narration lines with Kokoro, a free voice that runs on this computer, for Howbench's voice
+"""Says narration lines with Kokoro, a free voice that runs on this computer, for HowBench's voice
 pass (toolkit/kokoro.ts runs it).
 
 Reads a request as JSON on stdin:

@@ -1,5 +1,5 @@
 // Recording narration lines with Kokoro, a free voice that runs on this computer, through the
-// Python helper toolkit/python/kokoro_say.py. Kokoro isn't part of Howbench: the recipe's voice
+// Python helper toolkit/python/kokoro_say.py. Kokoro isn't part of HowBench: the recipe's voice
 // entry names the Python that has it ("python"), and a clear error says how to install it.
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";

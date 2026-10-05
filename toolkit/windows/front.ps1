@@ -4,11 +4,11 @@
 # and release of Alt first, which apps ignore on their own.
 . "$PSScriptRoot\common.ps1"
 $h = [IntPtr][int64]$env:HOWBENCH_HWND
-if (-not [HowbenchWin]::IsWindow($h)) { throw "No window $($env:HOWBENCH_HWND)" }
+if (-not [HowBenchWin]::IsWindow($h)) { throw "No window $($env:HOWBENCH_HWND)" }
 $VK_MENU = 0x12; $KEYEVENTF_KEYUP = 2
-[HowbenchWin]::keybd_event($VK_MENU, 0, 0, [UIntPtr]::Zero)
-[HowbenchWin]::keybd_event($VK_MENU, 0, $KEYEVENTF_KEYUP, [UIntPtr]::Zero)
-[HowbenchWin]::ShowWindow($h, $(if ([HowbenchWin]::IsIconic($h)) { 9 } else { 5 })) | Out-Null
-[HowbenchWin]::SetForegroundWindow($h) | Out-Null
+[HowBenchWin]::keybd_event($VK_MENU, 0, 0, [UIntPtr]::Zero)
+[HowBenchWin]::keybd_event($VK_MENU, 0, $KEYEVENTF_KEYUP, [UIntPtr]::Zero)
+[HowBenchWin]::ShowWindow($h, $(if ([HowBenchWin]::IsIconic($h)) { 9 } else { 5 })) | Out-Null
+[HowBenchWin]::SetForegroundWindow($h) | Out-Null
 Start-Sleep -Milliseconds 300
-Write-Json (Get-WindowInfo $h ([HowbenchWin]::TopLevel()))
+Write-Json (Get-WindowInfo $h ([HowBenchWin]::TopLevel()))

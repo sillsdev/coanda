@@ -61,7 +61,7 @@ export interface ImageResult {
   model: string;
   /** The output size asked for, or null when the model chooses. */
   size: string | null;
-  /** GPT Image 2.5's prices, in US dollars; null for another model, whose prices Howbench
+  /** GPT Image 2.5's prices, in US dollars; null for another model, whose prices HowBench
    * doesn't know. */
   estimatedCost: number | null;
   /** What OpenRouter charged, in US dollars; null for an estimate, or when it didn't say. */
@@ -122,7 +122,7 @@ export async function image(opts: ImageOptions): Promise<ImageResult> {
     if (opts.estimate) return { ...result, out: null, cost: null };
 
     const key = openRouterKey();
-    if (!key) throw new Error("No OpenRouter key: set one in Howbench's settings");
+    if (!key) throw new Error("No OpenRouter key: set one in HowBench's settings");
     // Before paying for the image, so there's somewhere to save it.
     mkdirSync(dirname(out), { recursive: true });
     const made = await generateImage(key, {

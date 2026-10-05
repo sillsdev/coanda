@@ -74,7 +74,7 @@ const USAGE = `Usage:
       what couldn't be checked. --say-during names a line (its words) that may play over
       an action. With --sheets, also writes a sheet per highlight box into FOLDER.
   howbench words <video> [--same SCRIPT=HEARD,...] [--language CODE]
-      Costs money: transcribe a voiced video with ElevenLabs (key from Howbench's settings)
+      Costs money: transcribe a voiced video with ElevenLabs (key from HowBench's settings)
       and check that every narration word is heard once, in order, inside its own line.
       --same accepts pairs speech recognition hears another way.
   howbench subtitles <picture> <out> [--timeline FILE]
@@ -97,7 +97,7 @@ const USAGE = `Usage:
       recipe's voice entry.
   howbench image <out> [<input>...] --prompt TEXT [--references] [--aspect 16:9 | --size WxH]
                [--quality Q] [--model ID] [--estimate]
-      Make an image from TEXT through OpenRouter (key from Howbench's settings). Given
+      Make an image from TEXT through OpenRouter (key from HowBench's settings). Given
       <input> images, edit the first, with any others as references; with --references,
       make a new image from them all. --aspect is one of 2:3 3:4 9:16 1:1 4:3 3:2 16:9
       21:9; --size asks for exact pixels, brought to the nearest the model accepts;
@@ -145,7 +145,7 @@ async function main() {
         ...(flags.config ? { configFile: flags.config } : {}),
       });
       const where = server.root ?? "no folder yet (choose one in the app)";
-      console.log(`Howbench is serving ${where} at http://localhost:${server.port}`);
+      console.log(`HowBench is serving ${where} at http://localhost:${server.port}`);
       break;
     }
 
@@ -169,7 +169,7 @@ async function main() {
           // Ride out a server restart, but not a server that is gone.
           if (++failures > 5) {
             throw new Error(
-              `Could not reach the Howbench server at ${base}. Is \`howbench serve\` running?`,
+              `Could not reach the HowBench server at ${base}. Is \`howbench serve\` running?`,
               { cause: err },
             );
           }
@@ -362,7 +362,7 @@ async function main() {
       const [video] = positional;
       if (!video) throw new UsageError("words needs <video>");
       const apiKey = elevenLabsKey();
-      if (!apiKey) throw new Error("No ElevenLabs key: set one in Howbench's settings");
+      if (!apiKey) throw new Error("No ElevenLabs key: set one in HowBench's settings");
       const sameWords = (flags.same ?? "")
         .split(",")
         .filter((pair) => pair.includes("="))
@@ -398,7 +398,7 @@ async function main() {
     case "image": {
       if (flags.credits) {
         const key = openRouterKey();
-        if (!key) throw new Error("No OpenRouter key: set one in Howbench's settings");
+        if (!key) throw new Error("No OpenRouter key: set one in HowBench's settings");
         const c = await credits(key);
         console.log(`$${c.remaining.toFixed(2)} left of $${c.total.toFixed(2)}`);
         break;

@@ -191,7 +191,7 @@ export async function voice(opts: {
     let rec = found[i];
     if (!rec && opts.mode === "pass" && provider === "elevenlabs") {
       const apiKey = elevenLabsKey();
-      if (!apiKey) throw new Error("No ElevenLabs key: set one in Howbench's settings");
+      if (!apiKey) throw new Error("No ElevenLabs key: set one in HowBench's settings");
       if (!settings.voiceId || !settings.model) {
         throw new Error(`Set voice.voiceId and voice.model in ${PROJECT_FILE}`);
       }
@@ -263,7 +263,7 @@ export async function voice(opts: {
     seconds: plan.seconds,
   };
   writeFileSync(outTimeline, JSON.stringify(shiftTimeline(timeline, plan.shift), null, 1));
-  // The translations go before the report, which Howbench takes as the sign that the video is done.
+  // The translations go before the report, which HowBench takes as the sign that the video is done.
   const translated = Object.entries(settings.translations ?? {}).flatMap(([code, file]) => {
     const srtOut = join(o.dir, `${o.name}.${code}.srt`);
     try {

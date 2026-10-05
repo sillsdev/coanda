@@ -6,22 +6,22 @@
 . "$PSScriptRoot\common.ps1"
 Add-Type -AssemblyName System.Drawing
 $h = [IntPtr][int64]$env:HOWBENCH_HWND
-if (-not [HowbenchWin]::IsWindow($h)) { throw "No window $($env:HOWBENCH_HWND)" }
-if ([HowbenchWin]::IsIconic($h)) { throw 'The window is minimized: put it behind other windows first' }
+if (-not [HowBenchWin]::IsWindow($h)) { throw "No window $($env:HOWBENCH_HWND)" }
+if ([HowBenchWin]::IsIconic($h)) { throw 'The window is minimized: put it behind other windows first' }
 # The visible frame inside the invisible resize borders, which DWM gives only in physical pixels.
-$physical = New-Object HowbenchWin+RECT
-[HowbenchWin]::GetWindowRect($h, [ref]$physical) | Out-Null
-$frame = [HowbenchWin]::Frame($h)
+$physical = New-Object HowBenchWin+RECT
+[HowBenchWin]::GetWindowRect($h, [ref]$physical) | Out-Null
+$frame = [HowBenchWin]::Frame($h)
 # Measure and print as the window sees itself, or PrintWindow fills only part of the bitmap.
-[HowbenchWin]::SetThreadDpiAwarenessContext([HowbenchWin]::GetWindowDpiAwarenessContext($h)) | Out-Null
+[HowBenchWin]::SetThreadDpiAwarenessContext([HowBenchWin]::GetWindowDpiAwarenessContext($h)) | Out-Null
 $client = $env:HOWBENCH_CLIENT -eq '1'
-$outer = New-Object HowbenchWin+RECT
-[HowbenchWin]::GetWindowRect($h, [ref]$outer) | Out-Null
-$area = if ($client) { [HowbenchWin]::Client($h) } else { $outer }
+$outer = New-Object HowBenchWin+RECT
+[HowBenchWin]::GetWindowRect($h, [ref]$outer) | Out-Null
+$area = if ($client) { [HowBenchWin]::Client($h) } else { $outer }
 $bitmap = New-Object System.Drawing.Bitmap ($area.Right - $area.Left), ($area.Bottom - $area.Top)
 $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
 $dc = $graphics.GetHdc()
-$ok = [HowbenchWin]::PrintWindow($h, $dc, $(if ($client) { 3 } else { 2 }))
+$ok = [HowBenchWin]::PrintWindow($h, $dc, $(if ($client) { 3 } else { 2 }))
 $graphics.ReleaseHdc($dc)
 if (-not $ok) { throw 'PrintWindow failed' }
 if (-not $client) {

@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { Alignment } from "./voiceCache.ts";
 
-/** The API key: from the environment, or the one saved in Howbench's settings. */
+/** The API key: from the environment, or the one saved in HowBench's settings. */
 export function elevenLabsKey(): string | undefined {
   const fromEnv = process.env.ELEVENLABS_API_KEY || process.env.ELEVENLABS_KEY;
   if (fromEnv) return fromEnv;

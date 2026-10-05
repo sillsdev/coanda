@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vite-plus/test";
-import { AgentManager, type AgentOptions, type HowbenchReply } from "./agents.ts";
+import { AgentManager, type AgentOptions, type HowBenchReply } from "./agents.ts";
 
 // A stand-in for Claude Code. Each message is a turn, taken one at a time: it echoes the
 // message, says "Got: <message>", writes a howbench block replying to note <turn number>, waits 400 ms, then gives the
@@ -29,7 +29,7 @@ createInterface({ input: process.stdin }).on("line", (line) => {
 `;
 
 let dir: string;
-let replies: { video: string; id: number; reply: HowbenchReply }[];
+let replies: { video: string; id: number; reply: HowBenchReply }[];
 let manager: AgentManager | undefined;
 
 beforeEach(() => {
@@ -201,7 +201,7 @@ test("a restart tells Claude which background commands it killed", async () => {
     first.stopAll();
     const second = make({ command });
     await until(() => second.state("p").messages.some((m) => m.text.includes("record take 4")));
-    const told = second.state("p").messages.find((m) => m.text.startsWith("Got: [Howbench]"));
+    const told = second.state("p").messages.find((m) => m.text.startsWith("Got: [HowBench]"));
     expect(told?.text).toContain("killed the command");
     expect(told?.text).toContain("- record take 4");
     expect(

@@ -255,7 +255,7 @@ test("plan a video: start the brief from the project page, approve it, and go on
       page.getByTestId("step-outline").getByRole("button", { name: "Start" }),
     ).toBeDisabled();
 
-    // Starting the brief makes it from Howbench's template, opens it, and has Claude begin.
+    // Starting the brief makes it from HowBench's template, opens it, and has Claude begin.
     await page.getByTestId("step-brief").getByRole("button", { name: "Start" }).click();
     await expect(page.getByTestId("doc-page").locator(".md-h2").first()).toHaveText("Audience");
     expect(readFileSync(join(project, "brief.md"), "utf8")).toContain("## Learning objectives");

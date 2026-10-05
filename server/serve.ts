@@ -44,7 +44,7 @@ import { moveOldReviewFiles } from "./migrate.ts";
 import { isDocument, isVideoFile, PROJECT_FILE, stampName, Store } from "./store.ts";
 
 const DIST = resolve(dirname(fileURLToPath(import.meta.url)), "..", "dist");
-/** Howbench's templates for planning documents. */
+/** HowBench's templates for planning documents. */
 const TEMPLATES = resolve(dirname(fileURLToPath(import.meta.url)), "..", "agent", "templates");
 
 /** Each planning step's template, by step key, read afresh so edits to them apply at once. */
@@ -98,7 +98,7 @@ function gitGravatar(cwd: string): string | undefined {
   }
 }
 
-/** The reviewer's name and, when Howbench knows their email, their picture. */
+/** The reviewer's name and, when HowBench knows their email, their picture. */
 function whoAmI(cwd: string, user: string | undefined): Pick<ServerInfo, "user" | "avatars"> {
   if (user) return { user, avatars: {} };
   const name = gitUserName(cwd);
@@ -477,7 +477,7 @@ export function serve(
       // An answer goes to Claude at once. The chat shows it in the question's card.
       agents?.send(
         project,
-        `[Howbench] ${asked!.answer!.by} answered your question "${asked!.text}": ${asked!.answer!.text}`,
+        `[HowBench] ${asked!.answer!.by} answered your question "${asked!.text}": ${asked!.answer!.text}`,
         null,
       );
       emit({ type: "questions", project });
@@ -514,7 +514,7 @@ export function serve(
       if (agents) {
         agents.send(
           project,
-          "[Howbench] The reviewer approved the script and asks for the draft video. Build it " +
+          "[HowBench] The reviewer approved the script and asks for the draft video. Build it " +
             "from the script as your guidance says for the draft video.",
           "Make the draft video",
         );
@@ -533,7 +533,7 @@ export function serve(
         const title = PLANNING_STEPS.find((s) => s.key === key)?.title ?? key;
         agents.send(
           project,
-          `[Howbench] The reviewer has started the ${title.toLowerCase()}: ${doc}. Work on it with ` +
+          `[HowBench] The reviewer has started the ${title.toLowerCase()}: ${doc}. Work on it with ` +
             `them as your guidance says for the ${title.toLowerCase()}.`,
           `Started the ${title.toLowerCase()}`,
         );
@@ -556,8 +556,8 @@ export function serve(
         agents.send(
           owner,
           body.approved
-            ? `[Howbench] The reviewer approved the ${what} (${video}), as it is now.`
-            : `[Howbench] The reviewer withdrew their approval of the ${what} (${video}).`,
+            ? `[HowBench] The reviewer approved the ${what} (${video}), as it is now.`
+            : `[HowBench] The reviewer withdrew their approval of the ${what} (${video}).`,
           body.approved ? `Approved the ${what}` : `Withdrew approval of the ${what}`,
         );
       }
@@ -935,7 +935,7 @@ export function serve(
       if (!video) throw new HttpError(400, "Give a video");
       agents.send(
         project,
-        `[Howbench] Voice pass for ${video}. Record every narration line of this video that has ` +
+        `[HowBench] Voice pass for ${video}. Record every narration line of this video that has ` +
           "no matching recording, so the voice is complete and up to date. This costs money, " +
           "so plan first: list the lines, their count and the estimated cost, and wait for the " +
           "reviewer's go-ahead before generating anything. When the voice is recorded and the " +
@@ -1085,7 +1085,7 @@ export function serve(
     const index = join(DIST, "index.html");
     if (!existsSync(index)) {
       res.writeHead(500, { "Content-Type": "text/plain" });
-      return res.end("The Howbench app has not been built. Run `vp build` in the Howbench folder.");
+      return res.end("The HowBench app has not been built. Run `vp build` in the HowBench folder.");
     }
     return sendFile(req, res, index);
   };

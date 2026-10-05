@@ -13,7 +13,7 @@ beforeEach(() => {
 
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 
-test("old review files and folders take Howbench's names, with the paths in them", () => {
+test("old review files and folders take HowBench's names, with the paths in them", () => {
   const lesson = join(root, "lesson");
   mkdirSync(join(lesson, `one.mp4.${OLD}`), { recursive: true });
   mkdirSync(join(lesson, `.${OLD}`));
@@ -35,7 +35,7 @@ test("old review files and folders take Howbench's names, with the paths in them
   );
 });
 
-test("an old file is left where a Howbench one is already in its place", () => {
+test("an old file is left where a HowBench one is already in its place", () => {
   writeFileSync(join(root, `a.md.${OLD}.json`), "old");
   writeFileSync(join(root, "a.md.howbench.json"), "new");
   moveOldReviewFiles(root);

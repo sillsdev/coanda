@@ -122,7 +122,7 @@ export function contactSheet(opts: {
   }
 }
 
-/** Frames per second the picture is measured at. Howbench's pictures are 30 fps. */
+/** Frames per second the picture is measured at. HowBench's pictures are 30 fps. */
 export const FPS = 30;
 /** The picture is shrunk to this size before frames are compared. */
 const SMALL = { width: 96, height: 54 };

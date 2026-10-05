@@ -19,7 +19,7 @@ import type {
   UsageWindow,
 } from "../shared/types.ts";
 
-/** Howbench's instructions to every video session, kept in agent/guidance.md and read each time a
+/** HowBench's instructions to every video session, kept in agent/guidance.md and read each time a
  * session starts, so edits to it reach the next session without rebuilding anything. */
 const GUIDANCE_FILE = fileURLToPath(new URL("../agent/guidance.md", import.meta.url));
 
@@ -27,20 +27,20 @@ const HOWBENCH_DIR = fileURLToPath(new URL("..", import.meta.url))
   .replaceAll("\\", "/")
   .replace(/\/$/, "");
 
-/** Whether Howbench runs from its source, where its developer works on it, or is just installed. */
+/** Whether HowBench runs from its source, where its developer works on it, or is just installed. */
 function howbenchSituation(): string {
   return existsSync(join(HOWBENCH_DIR, ".git"))
-    ? `Howbench is running from its source code, a git checkout at ${HOWBENCH_DIR}. Its developer ` +
+    ? `HowBench is running from its source code, a git checkout at ${HOWBENCH_DIR}. Its developer ` +
         `works on it with Claude Code, in sessions named after the folder ` +
         `("${basename(HOWBENCH_DIR)}-…").`
-    : "Howbench is installed here, not run from its source: nobody on this machine works on " +
-        "Howbench's code, so there is no session to send Howbench's problems to.";
+    : "HowBench is installed here, not run from its source: nobody on this machine works on " +
+        "HowBench's code, so there is no session to send HowBench's problems to.";
 }
 
 function guidance(): string {
   try {
-    // `<howbench>` in the guidance stands for the Howbench folder and `<node>` for the Node that
-    // runs Howbench, so it can name Howbench's commands. Howbench needs a newer Node than a project's
+    // `<howbench>` in the guidance stands for the HowBench folder and `<node>` for the Node that
+    // runs HowBench, so it can name HowBench's commands. HowBench needs a newer Node than a project's
     // PATH may find.
     const text = readFileSync(GUIDANCE_FILE, "utf8")
       .replaceAll("<howbench>", HOWBENCH_DIR)
@@ -51,8 +51,8 @@ function guidance(): string {
   }
 }
 
-const FALLBACK_GUIDANCE = `You are working with a reviewer through Howbench, a video review app.
-Howbench's full instructions (agent/guidance.md in the Howbench repo) could not be read. Answer each
+const FALLBACK_GUIDANCE = `You are working with a reviewer through HowBench, a video review app.
+HowBench's full instructions (agent/guidance.md in the HowBench repo) could not be read. Answer each
 annotation you are sent, end each turn with a fenced howbench block of replies, and do not
 generate voice-over or publish anything unless the reviewer asks for it in words.`;
 
@@ -100,7 +100,7 @@ interface Session {
 export interface ProjectLaunch {
   args?: string[];
   env?: Record<string, string>;
-  /** Added to Howbench's instructions for this project. */
+  /** Added to HowBench's instructions for this project. */
   instructions?: string;
 }
 
@@ -115,8 +115,8 @@ export interface AgentOptions {
   /** Extra arguments, environment and instructions for one project's process. */
   launch?: (project: string) => ProjectLaunch;
   onChange: (project: string) => void;
-  onReply: (video: string, id: number, reply: HowbenchReply) => void;
-  /** A rendered video's time map: Howbench moves the video's annotations along it. */
+  onReply: (video: string, id: number, reply: HowBenchReply) => void;
+  /** A rendered video's time map: HowBench moves the video's annotations along it. */
   onTimeMap: (video: string, segments: TimeSegment[]) => void;
   /** A video was rendered this turn (it has an `unvoiced` entry) and came with no time map. */
   onRenderedWithoutMap: (video: string) => void;
@@ -153,7 +153,7 @@ export class AgentManager {
         lastSent: saved.lastSent,
       });
     }
-    // Sessions that Howbench stopped mid-turn, or with commands running in the background, carry
+    // Sessions that HowBench stopped mid-turn, or with commands running in the background, carry
     // on once whoever made this manager has it.
     setTimeout(() => {
       if (this.stopped) return;
@@ -161,7 +161,7 @@ export class AgentManager {
     }, 0);
   }
 
-  /** Restarts a session whose turn, or whose background commands, Howbench cut off when it
+  /** Restarts a session whose turn, or whose background commands, HowBench cut off when it
    * stopped, telling it so. */
   private resumeInterrupted(project: string, turn: boolean, killed: BackgroundTask[]): void {
     const s = this.sessions.get(project);
@@ -176,13 +176,13 @@ export class AgentManager {
     this.send(
       project,
       turn
-        ? "[Howbench] Howbench was restarted while you were working, which cut your turn off." +
+        ? "[HowBench] HowBench was restarted while you were working, which cut your turn off." +
             stopped +
             " Carry on from where you were, starting with a line saying what you're doing." +
             (last
               ? ` In case it didn't reach you, the reviewer's last message was:\n\n${last}`
               : "")
-        : "[Howbench] Howbench was restarted while you were waiting." + stopped,
+        : "[HowBench] HowBench was restarted while you were waiting." + stopped,
       turn
         ? "HowBench restarted during this turn. Carrying on."
         : "HowBench restarted and stopped what was running in the background.",
@@ -225,7 +225,7 @@ export class AgentManager {
     const current = this.instructionsFor(project);
     if (s.sessionId && s.instructions !== current && !text.trimStart().startsWith("/")) {
       text =
-        "[Howbench] Howbench's instructions to you have changed since this conversation began. " +
+        "[HowBench] HowBench's instructions to you have changed since this conversation began. " +
         "These replace the earlier ones:\n\n" +
         current +
         "\n\n---\n\n" +
@@ -241,7 +241,7 @@ export class AgentManager {
     if (s.status !== "working") s.workingSince = new Date().toISOString();
     s.status = "working";
     s.compacting = text.trim() === "/compact";
-    // On disk at once, so a Howbench stopped from now on knows to carry on with this turn.
+    // On disk at once, so a HowBench stopped from now on knows to carry on with this turn.
     this.save();
     s.proc!.stdin.write(
       JSON.stringify({ type: "user", message: { role: "user", content: text } }) + "\n",
@@ -279,8 +279,8 @@ export class AgentManager {
     s.proc = undefined;
   }
 
-  /** Stops every process as Howbench shuts down. A session that was working stays marked so,
-   * and carries on when Howbench next opens this folder. */
+  /** Stops every process as HowBench shuts down. A session that was working stays marked so,
+   * and carries on when HowBench next opens this folder. */
   stopAll(): void {
     for (const s of this.sessions.values()) {
       const proc = s.proc;
@@ -292,7 +292,7 @@ export class AgentManager {
     this.stopped = true;
   }
 
-  /** Howbench's guidance plus the project's own instructions, as a session should have them now. */
+  /** HowBench's guidance plus the project's own instructions, as a session should have them now. */
   private instructionsFor(project: string, extra = this.opts.launch?.(project) ?? {}): string {
     return extra.instructions ? `${guidance()}\n\n${extra.instructions}` : guidance();
   }
@@ -349,7 +349,7 @@ export class AgentManager {
 
     let buffer = "";
     // Output from a process that has been stopped or replaced is dropped: it may arrive after
-    // Howbench has moved to another folder.
+    // HowBench has moved to another folder.
     proc.stdout.on("data", (chunk: Buffer) => {
       if (s.proc !== proc) return;
       buffer += chunk.toString("utf8");
@@ -493,7 +493,7 @@ export class AgentManager {
         .map((x) => x.contextWindow)
         .filter((n): n is number => typeof n === "number");
       if (windows.length) s.contextWindow = Math.max(...windows);
-      const block = lastHowbenchBlock(s.turnText.join("\n"));
+      const block = lastHowBenchBlock(s.turnText.join("\n"));
       for (const [video, raw] of Object.entries(block?.timeMap ?? {})) {
         const segments = validSegments(raw);
         if (!segments.length) continue;
@@ -565,7 +565,7 @@ export class AgentManager {
   private push(project: string, s: Session, message: Omit<AgentMessage, "at">) {
     s.messages.push({ ...message, at: new Date().toISOString() });
     if (s.messages.length > MAX_MESSAGES) s.messages.splice(0, s.messages.length - MAX_MESSAGES);
-    // Keep the transcript on disk as it grows, so stopping Howbench mid-turn loses none of it.
+    // Keep the transcript on disk as it grows, so stopping HowBench mid-turn loses none of it.
     clearTimeout(s.saveTimer);
     s.saveTimer = setTimeout(() => this.save(), 1000);
     this.opts.onChange(project);
@@ -629,9 +629,9 @@ interface SavedSession {
   contextWindow?: number;
   instructions?: string;
   lastSent?: string;
-  /** It was working when last saved: Howbench stopped in the middle of its turn. */
+  /** It was working when last saved: HowBench stopped in the middle of its turn. */
   working?: boolean;
-  /** Background commands running when last saved, which stopping Howbench killed. */
+  /** Background commands running when last saved, which stopping HowBench killed. */
   background?: BackgroundTask[];
 }
 
@@ -666,7 +666,7 @@ interface StreamMessage {
 }
 
 /** One reply in a turn's howbench block. */
-export interface HowbenchReply {
+export interface HowBenchReply {
   video: string;
   id: number;
   text: string;
@@ -675,23 +675,23 @@ export interface HowbenchReply {
   t?: number;
 }
 
-interface HowbenchBlock {
+interface HowBenchBlock {
   /** Per video rendered with different timing, how the previous render's times map to the new. */
   timeMap?: Record<string, unknown>;
   /** Per video rendered this turn, its complete list of unvoiced lines. */
   unvoiced?: Record<string, UnvoicedLine[]>;
   status?: string;
-  replies?: HowbenchReply[];
+  replies?: HowBenchReply[];
   /** Questions for the reviewer, each answered on its own. */
   questions?: { text?: unknown; options?: unknown }[];
 }
 
-function lastHowbenchBlock(text: string): HowbenchBlock | null {
+function lastHowBenchBlock(text: string): HowBenchBlock | null {
   const blocks = [...text.matchAll(/```howbench\s*([\s\S]*?)```/g)];
   const last = blocks.at(-1);
   if (!last) return null;
   try {
-    return JSON.parse(last[1]) as HowbenchBlock;
+    return JSON.parse(last[1]) as HowBenchBlock;
   } catch {
     return null;
   }

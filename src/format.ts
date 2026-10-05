@@ -53,7 +53,7 @@ export function modelName(id: string): string {
   return `${m[1][0].toUpperCase()}${m[1].slice(1)} ${m[2]}.${m[3]}`;
 }
 
-/** Files Howbench opens as documents, as the server decides. */
+/** Files HowBench opens as documents, as the server decides. */
 export function isDocument(path: string): boolean {
   return path.toLowerCase().endsWith(".md");
 }
@@ -62,7 +62,7 @@ export function isImage(path: string): boolean {
   return /\.(png|jpe?g|gif|webp|svg)$/i.test(path);
 }
 
-/** Files Howbench shows as they are, without notes: images and JSON. */
+/** Files HowBench shows as they are, without notes: images and JSON. */
 export function isViewable(path: string): boolean {
   return isImage(path) || path.toLowerCase().endsWith(".json");
 }

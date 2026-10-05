@@ -12,12 +12,12 @@ $HWND_BOTTOM = [IntPtr]1
 $SWP_NOSIZE = 0x1; $SWP_NOMOVE = 0x2; $SWP_NOACTIVATE = 0x10
 
 $windows = if ($env:HOWBENCH_HWND) { @([IntPtr][int64]$env:HOWBENCH_HWND) } else {
-    @([HowbenchWin]::TopLevel() | Where-Object { [HowbenchWin]::ProcessId($_) -eq [int]$env:HOWBENCH_PID })
+    @([HowBenchWin]::TopLevel() | Where-Object { [HowBenchWin]::ProcessId($_) -eq [int]$env:HOWBENCH_PID })
 }
 if (-not $windows.Count) { throw 'No window to put behind' }
 foreach ($h in $windows) {
-    if ([HowbenchWin]::IsIconic($h)) { [HowbenchWin]::ShowWindow($h, $SW_SHOWNOACTIVATE) | Out-Null }
-    [HowbenchWin]::SetWindowPos($h, $HWND_BOTTOM, 0, 0, 0, 0, $SWP_NOSIZE -bor $SWP_NOMOVE -bor $SWP_NOACTIVATE) | Out-Null
+    if ([HowBenchWin]::IsIconic($h)) { [HowBenchWin]::ShowWindow($h, $SW_SHOWNOACTIVATE) | Out-Null }
+    [HowBenchWin]::SetWindowPos($h, $HWND_BOTTOM, 0, 0, 0, 0, $SWP_NOSIZE -bor $SWP_NOMOVE -bor $SWP_NOACTIVATE) | Out-Null
 }
 if ($env:HOWBENCH_CLIENT_RECT) {
     if ($windows.Count -ne 1) { throw 'HOWBENCH_CLIENT_RECT needs exactly one window' }
@@ -26,12 +26,12 @@ if ($env:HOWBENCH_CLIENT_RECT) {
     # Two passes: the first can move the window to a monitor with another DPI, which changes
     # the borders.
     foreach ($pass in 1, 2) {
-        $outer = New-Object HowbenchWin+RECT
-        [HowbenchWin]::GetWindowRect($h, [ref]$outer) | Out-Null
-        $inner = [HowbenchWin]::Client($h)
+        $outer = New-Object HowBenchWin+RECT
+        [HowBenchWin]::GetWindowRect($h, [ref]$outer) | Out-Null
+        $inner = [HowBenchWin]::Client($h)
         $left = $inner.Left - $outer.Left; $top = $inner.Top - $outer.Top
         $right = $outer.Right - $inner.Right; $bottom = $outer.Bottom - $inner.Bottom
-        [HowbenchWin]::SetWindowPos($h, $HWND_BOTTOM, $x - $left, $y - $top, $w + $left + $right, $ht + $top + $bottom, $SWP_NOACTIVATE) | Out-Null
+        [HowBenchWin]::SetWindowPos($h, $HWND_BOTTOM, $x - $left, $y - $top, $w + $left + $right, $ht + $top + $bottom, $SWP_NOACTIVATE) | Out-Null
     }
 }
-Write-Json @($windows | ForEach-Object { Get-WindowInfo $_ ([HowbenchWin]::TopLevel()) })
+Write-Json @($windows | ForEach-Object { Get-WindowInfo $_ ([HowBenchWin]::TopLevel()) })

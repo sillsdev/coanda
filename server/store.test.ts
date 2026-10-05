@@ -19,7 +19,7 @@ beforeEach(() => {
 
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 
-test("tree lists every folder, then the files, and skips Howbench's own files and hidden folders", () => {
+test("tree lists every folder, then the files, and skips HowBench's own files and hidden folders", () => {
   writeFileSync(join(root, "lessons", "one.mp4.howbench.json"), '{"annotations":[]}');
   const tree = new Store(root).tree();
   expect(tree.map((n) => n.path)).toEqual(["empty", "lessons", "intro.webm"]);

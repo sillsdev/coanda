@@ -8,14 +8,14 @@
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = New-Object Text.UTF8Encoding $false
 
-if (-not ('HowbenchWin' -as [type])) {
+if (-not ('HowBenchWin' -as [type])) {
     Add-Type -TypeDefinition @'
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
 
-public static class HowbenchWin {
+public static class HowBenchWin {
     [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
     [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X, Y; }
     public delegate bool EnumProc(IntPtr h, IntPtr l);
@@ -117,7 +117,7 @@ public interface IDXGIAdapter {
 [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
 public struct DXGI_OUTPUT_DESC {
     [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string DeviceName;
-    public HowbenchWin.RECT DesktopCoordinates;
+    public HowBenchWin.RECT DesktopCoordinates;
     public int AttachedToDesktop;
     public int Rotation;
     public IntPtr Monitor;
@@ -129,7 +129,7 @@ public interface IDXGIOutput {
     [PreserveSig] int GetDesc(out DXGI_OUTPUT_DESC desc);
 }
 
-public static class HowbenchDxgi {
+public static class HowBenchDxgi {
     [DllImport("dxgi.dll")] static extern int CreateDXGIFactory1(ref Guid riid, [MarshalAs(UnmanagedType.IUnknown)] out object factory);
 
     /** The outputs of the first graphics adapter, in the order ffmpeg's ddagrab numbers them. */
@@ -154,7 +154,7 @@ public static class HowbenchDxgi {
 }
 
 # Per-monitor aware (v2). Fails harmlessly if the process's awareness is already set.
-[HowbenchWin]::SetProcessDpiAwarenessContext([IntPtr](-4)) | Out-Null
+[HowBenchWin]::SetProcessDpiAwarenessContext([IntPtr](-4)) | Out-Null
 
 function ConvertTo-Box($r) {
     [ordered]@{ x = $r.Left; y = $r.Top; width = $r.Right - $r.Left; height = $r.Bottom - $r.Top }
@@ -164,50 +164,50 @@ function ConvertTo-Box($r) {
 # overlap it, or overlap $env:HOWBENCH_AREA ("x,y,width,height") if set: anything there would be
 # in a screen recording of it.
 function Get-WindowInfo([IntPtr]$h, [System.Collections.Generic.List[IntPtr]]$zOrder) {
-    $frame = [HowbenchWin]::Frame($h)
+    $frame = [HowBenchWin]::Frame($h)
     $area = $frame
     if ($env:HOWBENCH_AREA) {
         $x, $y, $w, $ht = $env:HOWBENCH_AREA.Split(',') | ForEach-Object { [int]$_ }
-        $area = New-Object HowbenchWin+RECT
+        $area = New-Object HowBenchWin+RECT
         $area.Left = $x; $area.Top = $y; $area.Right = $x + $w; $area.Bottom = $y + $ht
     }
-    $windowPid = [HowbenchWin]::ProcessId($h)
+    $windowPid = [HowBenchWin]::ProcessId($h)
     $above = @()
     foreach ($other in $zOrder) {
         if ($other -eq $h) { break }
-        if ([HowbenchWin]::Cloaked($other)) { continue }
-        $r = [HowbenchWin]::Frame($other)
-        if ($r.Right -le $r.Left -or $r.Bottom -le $r.Top -or -not [HowbenchWin]::Overlap($r, $area)) { continue }
-        $otherPid = [HowbenchWin]::ProcessId($other)
+        if ([HowBenchWin]::Cloaked($other)) { continue }
+        $r = [HowBenchWin]::Frame($other)
+        if ($r.Right -le $r.Left -or $r.Bottom -le $r.Top -or -not [HowBenchWin]::Overlap($r, $area)) { continue }
+        $otherPid = [HowBenchWin]::ProcessId($other)
         $name = try { (Get-Process -Id $otherPid).ProcessName } catch { '' }
-        $above += [ordered]@{ pid = $otherPid; process = $name; className = [HowbenchWin]::ClassName($other); frame = ConvertTo-Box $r }
+        $above += [ordered]@{ pid = $otherPid; process = $name; className = [HowBenchWin]::ClassName($other); frame = ConvertTo-Box $r }
     }
     [ordered]@{
         hwnd = $h.ToInt64()
         pid = $windowPid
-        title = [HowbenchWin]::Title($h)
-        className = [HowbenchWin]::ClassName($h)
+        title = [HowBenchWin]::Title($h)
+        className = [HowBenchWin]::ClassName($h)
         frame = ConvertTo-Box $frame
-        client = ConvertTo-Box ([HowbenchWin]::Client($h))
-        dpi = [HowbenchWin]::MonitorDpi($h)
-        minimized = [HowbenchWin]::IsIconic($h)
-        cloaked = [HowbenchWin]::Cloaked($h)
-        foreground = [HowbenchWin]::GetForegroundWindow() -eq $h
+        client = ConvertTo-Box ([HowBenchWin]::Client($h))
+        dpi = [HowBenchWin]::MonitorDpi($h)
+        minimized = [HowBenchWin]::IsIconic($h)
+        cloaked = [HowBenchWin]::Cloaked($h)
+        foreground = [HowBenchWin]::GetForegroundWindow() -eq $h
         above = @($above)
     }
 }
 
 function Get-TargetWindows {
-    $zOrder = [HowbenchWin]::TopLevel()
+    $zOrder = [HowBenchWin]::TopLevel()
     $hits = @()
     if ($env:HOWBENCH_HWND) {
         $h = [IntPtr][int64]$env:HOWBENCH_HWND
-        if (-not [HowbenchWin]::IsWindow($h)) { throw "No window $($env:HOWBENCH_HWND)" }
+        if (-not [HowBenchWin]::IsWindow($h)) { throw "No window $($env:HOWBENCH_HWND)" }
         return @(Get-WindowInfo $h $zOrder)
     }
     foreach ($h in $zOrder) {
-        if ($env:HOWBENCH_PID -and [HowbenchWin]::ProcessId($h) -ne [int]$env:HOWBENCH_PID) { continue }
-        if ($env:HOWBENCH_TITLE -and -not ([HowbenchWin]::Title($h) -match $env:HOWBENCH_TITLE)) { continue }
+        if ($env:HOWBENCH_PID -and [HowBenchWin]::ProcessId($h) -ne [int]$env:HOWBENCH_PID) { continue }
+        if ($env:HOWBENCH_TITLE -and -not ([HowBenchWin]::Title($h) -match $env:HOWBENCH_TITLE)) { continue }
         $hits += , (Get-WindowInfo $h $zOrder)
     }
     return @($hits)

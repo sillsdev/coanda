@@ -1,16 +1,16 @@
 ---
 name: howbench
-description: Open Howbench, the video review app, on a folder of videos Claude has made, so the user can annotate them in the browser and send the annotations back. Then act on each annotation, re-render, and reply in the app. Use when the user says "/howbench", "let me review the videos", "open the videos in Howbench", or asks to give feedback on videos you rendered.
+description: Open HowBench, the video review app, on a folder of videos Claude has made, so the user can annotate them in the browser and send the annotations back. Then act on each annotation, re-render, and reply in the app. Use when the user says "/howbench", "let me review the videos", "open the videos in HowBench", or asks to give feedback on videos you rendered.
 ---
 
-# Howbench: review videos with the user
+# HowBench: review videos with the user
 
-Howbench is a local web app. The user clicks or drags on a paused frame to leave an
+HowBench is a local web app. The user clicks or drags on a paused frame to leave an
 annotation, then clicks **Send**. You receive the annotations, make the changes, re-render
 the video file in place, and reply to each annotation. The replies show up in the app
 while it is open.
 
-`<howbench>` below is the root of the Howbench checkout: two folders above this skill.
+`<howbench>` below is the root of the HowBench checkout: two folders above this skill.
 
 ## 1. Start the app
 
@@ -26,7 +26,7 @@ while it is open.
 
    The server listens on port 4517 (`--port N` or `$HOWBENCH_PORT` to change it). The Bash
    sandbox refuses to open listening sockets, so this command has to run outside it; ask the
-   user to approve that. If the port is taken, a Howbench server may already be running there.
+   user to approve that. If the port is taken, a HowBench server may already be running there.
 
 3. Give the user the bare URL: `http://localhost:4517`
 

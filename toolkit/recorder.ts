@@ -612,7 +612,7 @@ async function installOverlays(page: Page) {
         setTimeout(() => ring.remove(), 700);
       },
       // The outer edge of a box with a 3px border placed at `box`, as the page's own styles lay
-      // it out (whether their box-sizing puts the border outside or not): the edge Howbench draws
+      // it out (whether their box-sizing puts the border outside or not): the edge HowBench draws
       // a marking's border inside.
       outerBox(box) {
         const probe = document.createElement("div");
