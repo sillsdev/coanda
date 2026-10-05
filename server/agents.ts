@@ -76,6 +76,8 @@ interface Session {
    * mid-turn is reminded of, shown in the chat or not. */
   /** Commands Claude left running in the background; when one finishes, Claude starts a
    * turn of its own. */
+  /** New settings wait for the process to be idle, with nothing in the background. */
+  restartWhenIdle?: boolean;
   background?: BackgroundTask[];
   lastSent?: string;
   /** The instructions the running process was started with. */
@@ -253,19 +255,28 @@ export class AgentManager {
     s.proc.kill();
     s.proc = undefined;
     s.status = "idle";
+    // Stopping kills its background commands too, on purpose.
+    s.background = [];
     // Saved, so a stopped turn is not carried on when the folder is next opened.
     this.save();
     this.opts.onChange(project);
   }
 
-  /** Stops the process if it is idle between turns, so the next message starts it afresh
-   * with new settings. A turn in progress is left to finish. */
+  /** Stops the process once it is idle between turns, with nothing running in the
+   * background, so the next message starts it afresh with new settings. A turn in progress, or
+   * a background command, is left to finish first. */
   restartWhenIdle(project: string): void {
     const s = this.sessions.get(project);
-    if (s?.proc && s.status !== "working") {
-      s.proc.kill();
-      s.proc = undefined;
-    }
+    if (!s?.proc) return;
+    s.restartWhenIdle = true;
+    this.restartIfIdle(s);
+  }
+
+  private restartIfIdle(s: Session): void {
+    if (!s.restartWhenIdle || !s.proc || s.status === "working" || s.background?.length) return;
+    s.restartWhenIdle = false;
+    s.proc.kill();
+    s.proc = undefined;
   }
 
   /** Stops every process as Coanda shuts down. A session that was working stays marked so,
@@ -414,6 +425,8 @@ export class AgentManager {
         id: typeof t.task_id === "string" ? t.task_id : "",
         description: typeof t.description === "string" ? t.description : "",
       }));
+      // A finished command's notification follows, and Claude takes a turn on it, so new
+      // settings wait for the end of that turn rather than for this.
       this.save();
       this.opts.onChange(project);
       return;
@@ -544,6 +557,7 @@ export class AgentManager {
       }
       s.turnText = [];
       this.save();
+      this.restartIfIdle(s);
       this.opts.onChange(project);
     }
   }

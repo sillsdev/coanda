@@ -217,7 +217,8 @@ export class Store {
     try {
       if (Math.abs(fstatSync(fd).mtimeMs - baseMtime) > 1) return null;
       ftruncateSync(fd, 0);
-      writeSync(fd, text, 0);
+      const bytes = Buffer.from(text, "utf8");
+      for (let at = 0; at < bytes.length;) at += writeSync(fd, bytes, at, bytes.length - at, at);
     } finally {
       closeSync(fd);
     }

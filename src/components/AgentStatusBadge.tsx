@@ -22,15 +22,13 @@ export function AgentStatusBadge({
   /** Between turns, with commands still running in the background. */
   waiting?: boolean;
 }) {
+  // A question or an error matters more than what's running in the background.
+  const showWaiting = waiting && (status === "done" || status === "idle");
   const label =
-    status === "working" && compacting
-      ? "Compacting"
-      : status !== "working" && waiting
-        ? "Waiting"
-        : LABELS[status];
+    status === "working" && compacting ? "Compacting" : showWaiting ? "Waiting" : LABELS[status];
   return (
     <span
-      className={`agent-badge ${status}${waiting && status !== "working" ? " waiting" : ""}`}
+      className={`agent-badge ${status}${showWaiting ? " waiting" : ""}`}
       data-status={status}
       title={withLabel ? undefined : label}
     >

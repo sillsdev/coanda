@@ -213,3 +213,33 @@ test("a restart tells Claude which background commands it killed", async () => {
     delete process.env.FINISH_AFTER;
   }
 });
+
+test("stopping forgets the background commands it killed", async () => {
+  writeFileSync(join(dir, "background.mjs"), BACKGROUND);
+  process.env.FINISH_AFTER = "60000";
+  try {
+    const agents = make({ command: [process.execPath, join(dir, "background.mjs")] });
+    agents.send("p", "record it");
+    await until(() => !!agents.state("p").background);
+    agents.stop("p");
+    expect(agents.state("p").background).toBeUndefined();
+    const saved = JSON.parse(readFileSync(join(dir, "sessions.json"), "utf8")) as Record<
+      string,
+      Record<string, { background?: unknown[] }>
+    >;
+    expect(Object.values(saved)[0].p.background).toBeUndefined();
+  } finally {
+    delete process.env.FINISH_AFTER;
+  }
+});
+
+test("new settings wait for background commands to finish before restarting", async () => {
+  writeFileSync(join(dir, "background.mjs"), BACKGROUND);
+  const agents = make({ command: [process.execPath, join(dir, "background.mjs")] });
+  agents.send("p", "record it");
+  await until(() => agents.status("p") === "done" && !!agents.state("p").background);
+  agents.restartWhenIdle("p");
+  // The command still finishes, and Claude's own turn after it still comes in.
+  await until(() => agents.state("p").messages.some((m) => m.text === "Recorded."));
+  await until(() => agents.status("p") === "done" && !agents.state("p").background);
+});
