@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vite-plus/test";
@@ -129,4 +129,17 @@ test("in a project, the planning documents come first, in step order", () => {
     ["one.mp4", undefined],
     ["video-project.json", undefined],
   ]);
+});
+
+test("saving a document replaces all of its text, and never recreates a missing one", () => {
+  const store = new Store(root);
+  const file = join(root, "brief.md");
+  writeFileSync(file, "A long first version of the brief.\n");
+  const first = store.readDoc("brief.md");
+  const saved = store.writeDoc("brief.md", "Short.\n", first!.mtime);
+  expect(saved).toMatchObject({ text: "Short.\n" });
+  expect(readFileSync(file, "utf8")).toBe("Short.\n");
+  rmSync(file);
+  expect(store.writeDoc("brief.md", "Again.\n", 0)).toBe("missing");
+  expect(existsSync(file)).toBe(false);
 });

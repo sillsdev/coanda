@@ -1,14 +1,19 @@
 // Reads the reviewed folder and the annotation files kept next to each video.
 import {
+  closeSync,
   copyFileSync,
   existsSync,
+  fstatSync,
+  ftruncateSync,
   mkdirSync,
+  openSync,
   readdirSync,
   readFileSync,
   renameSync,
   rmSync,
   statSync,
   writeFileSync,
+  writeSync,
 } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type {
@@ -199,10 +204,23 @@ export class Store {
    * Saves a document's text, unless it changed on disk since `baseMtime`, when it was read: then
    * returns null and leaves the file alone.
    */
-  writeDoc(doc: string, text: string, baseMtime: number): DocText | null {
+  writeDoc(doc: string, text: string, baseMtime: number): DocText | null | "missing" {
     const full = this.resolvePath(doc);
-    if (existsSync(full) && Math.abs(statSync(full).mtimeMs - baseMtime) > 1) return null;
-    writeFileSync(full, text);
+    // Opened as it is, never created: a document deleted or renamed meanwhile stays gone.
+    let fd: number;
+    try {
+      fd = openSync(full, "r+");
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return "missing";
+      throw err;
+    }
+    try {
+      if (Math.abs(fstatSync(fd).mtimeMs - baseMtime) > 1) return null;
+      ftruncateSync(fd, 0);
+      writeSync(fd, text, 0);
+    } finally {
+      closeSync(fd);
+    }
     return { text, mtime: statSync(full).mtimeMs };
   }
 
