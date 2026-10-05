@@ -8,10 +8,11 @@ interface Props {
   email?: string;
   auth: ClaudeAuth | null;
   onLogin: () => void;
+  onSwitch: () => void;
 }
 
 /** The reviewer's own avatar, which opens who HowReel and Claude take them to be. */
-export function Identity({ name, email, auth, onLogin }: Props) {
+export function Identity({ name, email, auth, onLogin, onSwitch }: Props) {
   const [open, setOpen] = useState(false);
   const boxRef = useRef<HTMLDivElement>(null);
 
@@ -36,7 +37,7 @@ export function Identity({ name, email, auth, onLogin }: Props) {
         <Avatar name={name} />
       </button>
       {open && (
-        <div className="settings-pop" data-testid="identity">
+        <div className="settings-pop identity-pop" data-testid="identity">
           <div className="key-field">
             <span className="eyebrow">Git</span>
             <div className="identity-line">{email ?? name}</div>
@@ -51,6 +52,9 @@ export function Identity({ name, email, auth, onLogin }: Props) {
                     {[auth.orgName, auth.subscriptionType].filter(Boolean).join(" · ")}
                   </div>
                 )}
+                <button className="btn btn-ghost-outline identity-switch" onClick={onSwitch}>
+                  Switch account
+                </button>
               </>
             ) : auth?.installed === false ? (
               <a

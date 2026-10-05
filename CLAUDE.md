@@ -31,6 +31,9 @@ A count on a label ("TODOs & Questions 0 open") is fine. A placeholder in an inp
 few words, is fine. The one empty-state hint, in the TODOs & Questions list, is there because
 Hatton asked for it; don't take it as licence for others.
 
+The settings popup (the key button) is the exception: explaining a setting belongs there, as
+fully as a newcomer needs, and the popup grows to fit.
+
 # Messages from video agents
 
 The Claude sessions HowReel runs for video projects send problems they find in HowReel (its

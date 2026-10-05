@@ -1,7 +1,8 @@
 // howreel serve [<folder>] | howreel wait | howreel reply … | howreel subtitles … | howreel voice … |
 // howreel image …
 import { existsSync, readFileSync } from "node:fs";
-import { join, parse as parsePath, resolve } from "node:path";
+import { dirname, join, parse as parsePath, resolve } from "node:path";
+import { defaultConfigFile } from "./config.ts";
 import type { SentAnnotation, Timeline } from "../shared/types.ts";
 import { image } from "../toolkit/image.ts";
 import { credits, openRouterKey } from "../toolkit/openrouter.ts";
@@ -143,6 +144,7 @@ async function main() {
         port,
         user: flags.user,
         ...(flags.config ? { configFile: flags.config } : {}),
+        agentClaudeDir: join(dirname(flags.config ?? defaultConfigFile()), "claude"),
       });
       const where = server.root ?? "no folder yet (choose one in the app)";
       console.log(`HowReel is serving ${where} at http://localhost:${server.port}`);

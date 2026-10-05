@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api, type KeyStart, type SavedKeys } from "../api.ts";
-import { KeyIcon, PasteIcon } from "./icons.tsx";
+import { FolderIcon, KeyIcon, PasteIcon } from "./icons.tsx";
 
 interface Props {
   saved: SavedKeys;
@@ -57,31 +57,68 @@ export function Settings({ saved, onSaveKey, app }: Props) {
       {open && (
         <div className="settings-pop" data-testid="settings">
           {app && (
-            <div className="key-field">
-              <div className="key-head">
-                <span className="eyebrow">App for this project</span>
-                <button className="link-btn small-btn push-right" onClick={app.onChoose}>
-                  {app.path ? "Change…" : "Choose…"}
-                </button>
-              </div>
-              {app.path && (
-                <div className="key-masked mono" title={app.path}>
-                  {app.path}
-                </div>
-              )}
-            </div>
+            <section className="settings-section" data-testid="app-setting">
+              <h3 className="settings-title">App</h3>
+              <p className="settings-lead">
+                The program this project's videos show. Claude runs it from the folder you choose
+                here, and records it.
+              </p>
+              <button className="app-picker" onClick={app.onChoose}>
+                <FolderIcon className="app-picker-icon" size={16} />
+                <span
+                  className={`app-picker-path mono${app.path ? "" : " empty"}`}
+                  title={app.path ?? ""}
+                >
+                  {app.path ?? "Choose a folder"}
+                </span>
+                <span className="app-picker-action">{app.path ? "Change…" : "Choose…"}</span>
+              </button>
+              <dl className="settings-facts">
+                <dt>What to choose</dt>
+                <dd>
+                  The folder you run the app from: a source checkout, such as a clone of
+                  BloomDesktop, or an installed copy. Not this video project's folder.
+                </dd>
+                <dt>Without it</dt>
+                <dd>Claude can help plan the video, but can't run the app or record it.</dd>
+                <dt>What Claude reads</dt>
+                <dd>
+                  The folder's <code>AGENTS.md</code> and <code>CLAUDE.md</code>, for how to build,
+                  start and drive the app, and its skills in <code>.claude/skills</code>. The more
+                  these say, the less Claude has to work out for itself.
+                </dd>
+                <dt>A source checkout</dt>
+                <dd>
+                  Claude may also fix the app's skills when they turn out to be wrong, or pass the
+                  fix to a Claude session already working in that folder. Changes are left
+                  uncommitted for you to review. An installed copy is only run.
+                </dd>
+                <dt>Where it's saved</dt>
+                <dd>
+                  On this computer, for this project. It isn't in the project's files, so each
+                  person working on the project sets their own.
+                </dd>
+                <dt>Changing it</dt>
+                <dd>
+                  Takes effect once Claude finishes what it's doing. The conversation carries on.
+                </dd>
+              </dl>
+            </section>
           )}
-          {KEYS.map(({ which, label }) => (
-            <KeyField
-              key={which}
-              label={label}
-              saved={saved[which]}
-              onSave={(key) => onSaveKey(which, key)}
-              note={
-                which === "openRouterKey" && credit !== null ? `$${credit.toFixed(2)} left` : null
-              }
-            />
-          ))}
+          <section className="settings-section">
+            <h3 className="settings-title">API keys</h3>
+            {KEYS.map(({ which, label }) => (
+              <KeyField
+                key={which}
+                label={label}
+                saved={saved[which]}
+                onSave={(key) => onSaveKey(which, key)}
+                note={
+                  which === "openRouterKey" && credit !== null ? `$${credit.toFixed(2)} left` : null
+                }
+              />
+            ))}
+          </section>
           <button className="btn btn-ghost-outline push-right" onClick={() => setOpen(false)}>
             Close
           </button>

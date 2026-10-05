@@ -26,8 +26,12 @@ feedback or ask for changes.
 - The session is a long-running `claude -p` process in auto mode, working in the reviewed
   folder, so it picks up that folder's `CLAUDE.md` and skills. Its session ID and transcript are
   kept in `~/.howreel/sessions.json`, and after a restart it resumes the same conversation.
-  Claude Code uses its own login (`claude auth login`); the panel offers **Log in to Claude** when
-  it is signed out.
+  The sessions run with `CLAUDE_CONFIG_DIR` set to `~/.howreel/claude`, so they have a Claude login
+  of their own, apart from the machine's other Claude Code work. That folder links to the
+  reviewer's setup in `~/.claude` (CLAUDE.md, settings, skills, commands, agents, plugins, output
+  styles, and the projects folder with transcripts and memory), but not to its login or caches.
+  Clicking your avatar shows the account and offers **Switch account**; the panel offers **Log in
+  to Claude** when the sessions are signed out.
 - **The app.** "App for this project", in the settings under the key button, sets the folder of
   the app a project's videos are about (kept per machine in `~/.howreel/projects.json`). The
   session gets that folder with `--add-dir`, and instructions to run and drive the app as the

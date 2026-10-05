@@ -147,6 +147,8 @@ export const api = {
   openPath: (path: string, project?: string | null) =>
     post<{ path: string }>(project == null ? "/api/open" : `/api/open?${p(project)}`, { path }),
   claudeLogin: () => post<{ started: boolean }>("/api/claude-login"),
+  /** Logs the video sessions' Claude account out and opens the sign-in for another. */
+  claudeSwitch: () => post<{ started: boolean }>("/api/claude-login?switch"),
   /** What's left on the OpenRouter account, in dollars. */
   openRouterCredits: () =>
     request<{ total: number; used: number; remaining: number }>("/api/openrouter-credits"),

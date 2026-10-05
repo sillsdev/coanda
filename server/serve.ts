@@ -40,6 +40,7 @@ import { osOpen, osReveal, osTrash } from "./osOpen.ts";
 import { mapFromTimelines, mapTime } from "./timeMap.ts";
 import { pickFolder } from "./pickFolder.ts";
 import { appLaunch, ProjectSettingsStore } from "./projectSettings.ts";
+import { prepareAgentClaudeDir } from "./agentClaude.ts";
 import { moveOldReviewFiles } from "./migrate.ts";
 import { isDocument, isVideoFile, PROJECT_FILE, stampName, Store } from "./store.ts";
 
@@ -123,6 +124,9 @@ export interface ServeOptions {
   pickFolder?: (initial?: string) => Promise<string | null>;
   /** How to run Claude Code, as command and leading arguments. Defaults to ["claude"]. */
   claudeCommand?: string[];
+  /** The Claude Code folder for the video sessions, with a login of their own. When absent,
+   * they use the machine's Claude Code login. */
+  agentClaudeDir?: string;
   /** Where Claude session IDs and transcripts are kept. Defaults to beside the config file. */
   sessionsFile?: string;
   /** Where the ElevenLabs API key is saved. Defaults to beside the config file. */
@@ -138,6 +142,11 @@ export function serve(
   let watcher: FSWatcher | null = null;
   let agents: AgentManager | null = null;
   const claudeCommand = opts.claudeCommand ?? ["claude"];
+  if (opts.agentClaudeDir) prepareAgentClaudeDir(opts.agentClaudeDir);
+  // For every Claude Code command HowReel runs: the sessions, and the login they use.
+  const claudeEnv: Record<string, string> = opts.agentClaudeDir
+    ? { CLAUDE_CONFIG_DIR: opts.agentClaudeDir }
+    : {};
   const keyFile = opts.elevenLabsKeyFile ?? join(dirname(configFile), "elevenlabs_key.txt");
   const openRouterKeyFile = join(dirname(configFile), "openrouter_key.txt");
   const projectSettings = new ProjectSettingsStore(join(dirname(configFile), "projects.json"));
@@ -305,6 +314,7 @@ export function serve(
     agents = new AgentManager({
       cwd: full,
       command: claudeCommand,
+      env: claudeEnv,
       sessionsFile: opts.sessionsFile ?? join(dirname(configFile), "sessions.json"),
       onChange: (project) => {
         const status = agents?.status(project);
@@ -694,12 +704,26 @@ export function serve(
     }
 
     if (path === "/api/claude-auth" && method === "GET") {
-      return json(res, 200, await claudeAuth(claudeCommand));
+      return json(res, 200, await claudeAuth(claudeCommand, claudeEnv));
     }
 
     if (path === "/api/claude-login" && method === "POST") {
       const [cmd, ...base] = claudeCommand;
-      const child = spawn(cmd, [...base, "auth", "login"], { detached: true, stdio: "ignore" });
+      const env = { ...process.env, ...claudeEnv };
+      // Switching accounts: the current login goes first, so the sign-in page can pick another.
+      if (url.searchParams.has("switch")) {
+        await new Promise<void>((done) => {
+          const out = spawn(cmd, [...base, "auth", "logout"], { env, windowsHide: true });
+          out.once("error", () => done());
+          out.once("close", () => done());
+        });
+        agents?.stopAll();
+      }
+      const child = spawn(cmd, [...base, "auth", "login"], {
+        detached: true,
+        stdio: "ignore",
+        env,
+      });
       await new Promise<void>((resolveSpawn, rejectSpawn) => {
         child.once("spawn", resolveSpawn);
         child.once("error", (err: NodeJS.ErrnoException) =>
@@ -1140,12 +1164,15 @@ export function serve(
 }
 
 /** Asks Claude Code whether it is logged in. */
-function claudeAuth(command: string[]): Promise<ClaudeAuth> {
+function claudeAuth(command: string[], env: Record<string, string>): Promise<ClaudeAuth> {
   const [cmd, ...base] = command;
   return new Promise((resolvePromise) => {
     let out = "";
     try {
-      const child = spawn(cmd, [...base, "auth", "status", "--json"], { windowsHide: true });
+      const child = spawn(cmd, [...base, "auth", "status", "--json"], {
+        windowsHide: true,
+        env: { ...process.env, ...env },
+      });
       child.stdout.on("data", (b: Buffer) => (out += b.toString()));
       child.on("error", (err: NodeJS.ErrnoException) =>
         resolvePromise({ installed: err.code !== "ENOENT", loggedIn: false }),

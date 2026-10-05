@@ -393,6 +393,7 @@ function App() {
             email={info.email}
             auth={auth}
             onLogin={() => void run(api.claudeLogin())}
+            onSwitch={() => void run(api.claudeSwitch().then(() => api.claudeAuth().then(setAuth)))}
           />
           <Settings
             saved={keys}
