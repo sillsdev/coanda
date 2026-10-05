@@ -105,7 +105,12 @@ export function findRecording(
       (r.provider ?? "elevenlabs") === provider,
   );
   if (exact || provider !== "elevenlabs") return exact;
-  return same.find((r) => r.voice === undefined) ?? (voice === undefined ? same[0] : undefined);
+  // Older ElevenLabs recordings name no voice; never fall back to another provider's.
+  const elevenLabs = same.filter((r) => (r.provider ?? "elevenlabs") === "elevenlabs");
+  return (
+    elevenLabs.find((r) => r.voice === undefined) ??
+    (voice === undefined ? elevenLabs[0] : undefined)
+  );
 }
 
 /** The character timings saved with a recording, if its data file has them. */

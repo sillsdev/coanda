@@ -272,8 +272,9 @@ const REACTION = 2.5;
 
 /**
  * For each click, how long until the screen reacts: the first big change in the video itself
- * (see frameDifferences) from two frames before the click until the next click or 2.5 s
- * after. Null when nothing big changes, as after a click into a text box.
+ * (see frameDifferences) from the click until the next click or 2.5 s after. A change in the
+ * frames just before the click isn't its reaction. Null when nothing big changes, as after a
+ * click into a text box.
  */
 export function clickReactions(
   video: string,
@@ -283,7 +284,9 @@ export function clickReactions(
   return sorted.map((t, i) => {
     const from = Math.max(0, t - 2 / FPS);
     const until = Math.min(sorted[i + 1] ?? Infinity, t + 2.5);
-    const change = frameDifferences(video, from, until - from).find((f) => f.diff > REACTION);
+    const change = frameDifferences(video, from, until - from).find(
+      (f) => f.t > t - 0.5 / FPS && f.diff > REACTION,
+    );
     return { t, reaction: change ? round(change.t - t) : null };
   });
 }

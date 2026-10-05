@@ -1942,6 +1942,13 @@
   border-color: var(--go);
 }
 
+.question-answer {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
 .question-card .chat-human {
   background: var(--go-strong);
 }

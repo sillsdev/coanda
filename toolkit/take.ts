@@ -252,21 +252,16 @@ export function cutTime(cuts: [number, number][]): (t: number) => number {
 }
 
 /** The stretches of the take in which something happens: each line while it would be spoken,
- * each logged action, each marking appearing and going (all of a dissolve), each pointer
- * sample, press and key. */
+ * each logged action, each marking for as long as it's on screen (cutting under a box would
+ * shorten it), each pointer sample, press and key. */
 export function busyStretches(take: TakeEvents): [number, number][] {
   const fade = DEFAULT_MARKING_STYLE.fade;
   const busy: [number, number][] = [
     ...take.events.map((e): [number, number] =>
       "say" in e ? [e.t, e.t + estimateSpeech(e.say, take.secondsPerWord)] : [e.t, e.t],
     ),
-    ...take.markings.flatMap((m: Marking): [number, number][] =>
-      m.kind === "dissolve"
-        ? [[m.from, m.to]]
-        : [
-            [m.from, m.from + fade],
-            [m.to, m.to + fade],
-          ],
+    ...take.markings.map((m: Marking): [number, number] =>
+      m.kind === "dissolve" ? [m.from, m.to] : [m.from, m.to + fade],
     ),
     ...[...(take.pointer ?? []), ...(take.presses ?? [])].map((p): [number, number] => [p.t, p.t]),
     ...(take.keys ?? []).map((t): [number, number] => [t, t]),

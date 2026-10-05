@@ -356,17 +356,30 @@ test("Claude's questions show in the chat, and each answer goes to Claude at onc
     await expect(second.locator(".question-option")).toHaveCount(0);
     await page.screenshot({ path: join(shots, "23-questions.png") });
 
-    // An answer goes to Claude straight away, and shows in the chat as the reviewer's message.
+    // An answer goes to Claude straight away. The card then shows the question and the answer,
+    // with nothing left to click or type.
     await first.getByRole("button", { name: "Yes" }).click();
-    await expect(first.locator(".question-option")).toHaveCount(0);
+    await expect(first.locator(".chat-human")).toHaveText("Yes");
+    await expect(first.getByRole("button")).toHaveCount(0);
+    await expect(first.getByRole("textbox")).toHaveCount(0);
     await expect
       .poll(lastMessage)
       .toContain('answered your question "Should every page get a picture?": Yes');
-    await expect(log.locator(".agent-msg.user").last()).toHaveText("Yes");
+    // The answer shows only in its card, not again as a message below.
+    await expect(log.locator(".agent-msg.user", { hasText: /^Yes$/ })).toHaveCount(0);
 
+    // The other is still waiting, and can be answered by typing.
+    await expect(second.getByPlaceholder("Answer…")).toBeVisible();
+    await page.screenshot({ path: join(shots, "24-question-answered.png") });
     await second.getByPlaceholder("Answer…").fill("Spanish");
     await second.getByPlaceholder("Answer…").press("Enter");
+    await expect(second.locator(".chat-human")).toHaveText("Spanish");
+    await expect(second.getByRole("button")).toHaveCount(0);
+    await expect(second.getByRole("textbox")).toHaveCount(0);
     await expect.poll(lastMessage).toContain(": Spanish");
+    await page.screenshot({ path: join(shots, "25-questions-both-answered.png") });
+
+    // Answers don't wait for Send.
     await expect(page.getByTestId("send")).toHaveText("Send to Claude");
   } finally {
     server.close();

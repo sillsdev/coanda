@@ -430,11 +430,11 @@ export function serve(
         q.sent = true;
         asked = q;
       });
-      // An answer goes to Claude at once, as a message in the chat.
+      // An answer goes to Claude at once. The chat shows it in the question's card.
       agents?.send(
         project,
         `[Coanda] ${asked!.answer!.by} answered your question "${asked!.text}": ${asked!.answer!.text}`,
-        asked!.answer!.text,
+        null,
       );
       emit({ type: "questions", project });
       return json(res, 200, list);

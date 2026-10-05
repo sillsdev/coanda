@@ -28,12 +28,16 @@ TARGET_RMS = 0.08
 BAD_REQUEST = 2
 MISSING = 3
 
+INSTALL_WINDOWS = """  py -3.12 -m venv C:\\tts\\kokoro-env
+  C:\\tts\\kokoro-env\\Scripts\\pip install kokoro
+then set "python": "C:\\\\tts\\\\kokoro-env\\\\Scripts\\\\python.exe" in the recipe's voice entry."""
+INSTALL_OTHER = """  python3.12 -m venv ~/tts/kokoro-env
+  ~/tts/kokoro-env/bin/pip install kokoro
+then set "python" to the full path of ~/tts/kokoro-env/bin/python in the recipe's voice entry."""
 INSTALL = """Kokoro isn't installed for {python}.
 Install it in its own Python environment (about 2 GB with torch; the voice model, about 0.3 GB,
 downloads the first time it speaks):
-  py -3.12 -m venv C:\\tts\\kokoro-env
-  C:\\tts\\kokoro-env\\Scripts\\pip install kokoro
-then set "python": "C:\\\\tts\\\\kokoro-env\\\\Scripts\\\\python.exe" in the recipe's voice entry.
+{steps}
 Languages other than English also need espeak-ng (https://github.com/espeak-ng/espeak-ng).
 ({error})"""
 
@@ -137,7 +141,8 @@ def load_kokoro():
         import torch
         from kokoro import KPipeline
     except ImportError as e:
-        sys.stderr.write(INSTALL.format(python=sys.executable, error=e) + "\n")
+        steps = INSTALL_WINDOWS if sys.platform == "win32" else INSTALL_OTHER
+        sys.stderr.write(INSTALL.format(python=sys.executable, steps=steps, error=e) + "\n")
         sys.exit(MISSING)
     return torch, KPipeline
 

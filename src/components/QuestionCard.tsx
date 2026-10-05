@@ -1,10 +1,11 @@
 import { useState } from "react";
 import type { AgentQuestion } from "../../shared/types.ts";
+import { Avatar } from "./Avatar.tsx";
 import { TrashIcon } from "./icons.tsx";
 import { Markdown } from "./Linkify.tsx";
 
 /** One of Claude's questions in the chat, with its suggested answers as buttons and a box for
- * another. Once answered, the answer follows it in the chat. */
+ * another. Once answered, it shows only the question and the answer. */
 export function QuestionCard({
   question,
   onAnswer,
@@ -22,14 +23,23 @@ export function QuestionCard({
       className={`card question-card${question.answer ? " answered" : ""}`}
       data-testid={`question-${question.id}`}
     >
-      <button className="mini-btn card-delete question-delete" title="Delete" onClick={onDelete}>
-        <TrashIcon />
-      </button>
+      {!question.answer && (
+        <button className="mini-btn card-delete question-delete" title="Delete" onClick={onDelete}>
+          <TrashIcon />
+        </button>
+      )}
       <div className="chat">
         <div className="chat-ai">
           <Markdown text={question.text} onOpenPath={onOpenPath} />
         </div>
-        {!question.answer && (
+        {question.answer ? (
+          <div className="question-answer">
+            <div className="chat-human" title={question.answer.by}>
+              {question.answer.text}
+            </div>
+            <Avatar name={question.answer.by} className="tiny" />
+          </div>
+        ) : (
           <>
             {question.options.length > 0 && (
               <div className="question-options">

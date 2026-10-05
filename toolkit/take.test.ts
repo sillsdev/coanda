@@ -61,15 +61,14 @@ const take: TakeEvents = {
   secondsPerWord: 0.5,
 };
 
-test("busy stretches cover lines while spoken, actions, markings coming and going, pointer and keys", () => {
+test("busy stretches cover lines while spoken, actions, markings while shown, pointer and keys", () => {
   const rounded = busyStretches(take).map(([a, b]) => [a, Number(b.toFixed(3))]);
   expect(rounded).toEqual([
     [1, 2.9],
     [3, 3],
     [3.5, 3.5],
     [4, 4],
-    [6, 6.35],
-    [6.5, 6.85],
+    [6, 6.85],
     [7, 8],
     [9, 9],
   ]);

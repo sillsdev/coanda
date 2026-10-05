@@ -38,6 +38,19 @@ export const estimateSpeech = (text: string, perWord = SECONDS_PER_WORD) =>
 /** How long a pointer move of `distance` layout pixels takes when the shot doesn't say. */
 export const glideMs = (distance: number) => Math.round(Math.min(1100, 400 + 0.7 * distance));
 
+/** The pause after each character typed, as a share of the usual: uneven, like a person's,
+ * but the same each time the same text is typed, so a repeated take repeats. */
+export function typingRhythm(text: string): number[] {
+  let seed = 2166136261;
+  const rhythm: number[] = [];
+  for (const ch of text) seed = Math.imul(seed ^ ch.charCodeAt(0), 16777619) >>> 0;
+  for (const _ of text) {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    rhythm.push(0.6 + (seed / 2 ** 32) * 0.8);
+  }
+  return rhythm;
+}
+
 export interface Box {
   x: number;
   y: number;
@@ -282,11 +295,13 @@ export async function startRecorder(opts: RecorderOptions) {
      * pressed. */
     async type(text: string, msPerChar = 75) {
       await r.at(pointerActed + typeBeat);
+      const rhythm = typingRhythm(text);
+      let i = 0;
       for (const ch of text) {
         keys.push(stamp());
         if (/[a-zA-Z0-9 .,]/.test(ch)) await page.keyboard.type(ch);
         else await page.keyboard.insertText(ch);
-        await page.waitForTimeout(msPerChar * (0.6 + Math.random() * 0.8));
+        await page.waitForTimeout(msPerChar * rhythm[i++]);
       }
     },
     /** Presses a key, such as "Enter", logging it as typed. */

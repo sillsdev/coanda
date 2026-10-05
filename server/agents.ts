@@ -4,8 +4,9 @@
 // keeps one conversation open and takes message after message on stdin. Its session ID is
 // saved, so after a restart `--resume` picks the same conversation back up.
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { validSegments } from "./timeMap.ts";
 import type {
@@ -22,19 +23,29 @@ import type {
  * session starts, so edits to it reach the next session without rebuilding anything. */
 const GUIDANCE_FILE = fileURLToPath(new URL("../agent/guidance.md", import.meta.url));
 
+const COANDA_DIR = fileURLToPath(new URL("..", import.meta.url))
+  .replaceAll("\\", "/")
+  .replace(/\/$/, "");
+
+/** Whether Coanda runs from its source, where its developer works on it, or is just installed. */
+function coandaSituation(): string {
+  return existsSync(join(COANDA_DIR, ".git"))
+    ? `Coanda is running from its source code, a git checkout at ${COANDA_DIR}. Its developer ` +
+        `works on it with Claude Code, in sessions named after the folder ` +
+        `("${basename(COANDA_DIR)}-…").`
+    : "Coanda is installed here, not run from its source: nobody on this machine works on " +
+        "Coanda's code, so there is no session to send Coanda's problems to.";
+}
+
 function guidance(): string {
   try {
     // `<coanda>` in the guidance stands for the Coanda folder and `<node>` for the Node that
     // runs Coanda, so it can name Coanda's commands. Coanda needs a newer Node than a project's
     // PATH may find.
-    return readFileSync(GUIDANCE_FILE, "utf8")
-      .replaceAll(
-        "<coanda>",
-        fileURLToPath(new URL("..", import.meta.url))
-          .replaceAll("\\", "/")
-          .replace(/\/$/, ""),
-      )
+    const text = readFileSync(GUIDANCE_FILE, "utf8")
+      .replaceAll("<coanda>", COANDA_DIR)
       .replaceAll("<node>", process.execPath.replaceAll("\\", "/"));
+    return `${text}\n\n## Where you are\n\n${coandaSituation()}`;
   } catch {
     return FALLBACK_GUIDANCE;
   }
@@ -70,6 +81,11 @@ interface Session {
    */
   sent?: number;
   started?: number;
+  /** When the session last went from not working to working. */
+  workingSince?: string;
+  /** The turn running is Claude Code's /compact. */
+  compacting?: boolean;
+  saveTimer?: ReturnType<typeof setTimeout>;
 }
 
 export interface ProjectLaunch {
@@ -97,6 +113,8 @@ export interface AgentOptions {
   onRenderedWithoutMap: (video: string) => void;
   /** The unvoiced lines of a video Claude just rendered; an empty list means all are voiced. */
   onUnvoiced: (video: string, lines: UnvoicedLine[]) => void;
+  /** Questions Claude asked the reviewer this turn. */
+  onQuestions: (project: string, questions: { text: string; options: string[] }[]) => void;
 }
 
 export class AgentManager {
@@ -107,7 +125,9 @@ export class AgentManager {
 
   constructor(opts: AgentOptions) {
     this.opts = opts;
+    const interrupted: string[] = [];
     for (const [project, saved] of Object.entries(this.loadSaved())) {
+      if (saved.working) interrupted.push(project);
       this.sessions.set(project, {
         status: "idle",
         sessionId: saved.sessionId,
@@ -119,6 +139,24 @@ export class AgentManager {
         instructions: saved.instructions,
       });
     }
+    // Sessions that Coanda stopped mid-turn carry on, once whoever made this manager has it.
+    setTimeout(() => {
+      for (const project of interrupted) this.resumeInterrupted(project);
+    }, 0);
+  }
+
+  /** Restarts a session whose turn was cut off when Coanda stopped, telling it so. */
+  private resumeInterrupted(project: string): void {
+    const s = this.sessions.get(project);
+    if (!s || s.proc) return;
+    const last = s.messages.findLast((m) => m.role === "user")?.text;
+    this.send(
+      project,
+      "[Coanda] Coanda was restarted while you were working, which cut your turn off. Carry on " +
+        "from where you were, starting with a line saying what you're doing." +
+        (last ? ` In case it didn't reach you, the reviewer's last message was:\n\n${last}` : ""),
+      "Coanda restarted during this turn. Carrying on.",
+    );
   }
 
   state(project: string): AgentState {
@@ -131,6 +169,8 @@ export class AgentManager {
       contextTokens: s?.contextTokens,
       contextWindow: s?.contextWindow,
       limits: this.limits,
+      ...(s?.status === "working" && s.workingSince ? { workingSince: s.workingSince } : {}),
+      ...(s?.status === "working" && s.compacting ? { compacting: true } : {}),
     };
   }
 
@@ -139,8 +179,8 @@ export class AgentManager {
   }
 
   /** Sends a message to the project's session. `shown` is what the chat shows of it, with
-   * `images` the reviewer pasted in. */
-  send(project: string, text: string, shown = text, images: string[] = []): void {
+   * `images` the reviewer pasted in; null when the chat shows it some other way. */
+  send(project: string, text: string, shown: string | null = text, images: string[] = []): void {
     const s = this.session(project);
     if (!s.proc) this.start(project, s);
     // Claude Code records a conversation's system prompt when it begins and re-sends that record
@@ -158,10 +198,16 @@ export class AgentManager {
       s.instructions = current;
       this.save();
     }
-    this.push(project, s, { role: "user", text: shown, ...(images.length ? { images } : {}) });
+    if (shown !== null) {
+      this.push(project, s, { role: "user", text: shown, ...(images.length ? { images } : {}) });
+    }
     // Slash commands aren't echoed, so they aren't counted.
     if (!text.trimStart().startsWith("/")) s.sent = (s.sent ?? 0) + 1;
+    if (s.status !== "working") s.workingSince = new Date().toISOString();
     s.status = "working";
+    s.compacting = text.trim() === "/compact";
+    // On disk at once, so a Coanda stopped from now on knows to carry on with this turn.
+    this.save();
     s.turnText = [];
     s.proc!.stdin.write(
       JSON.stringify({ type: "user", message: { role: "user", content: text } }) + "\n",
@@ -188,8 +234,14 @@ export class AgentManager {
     }
   }
 
+  /** Stops every process as Coanda shuts down. A session that was working stays marked so,
+   * and carries on when Coanda next opens this folder. */
   stopAll(): void {
-    for (const s of this.sessions.values()) s.proc?.kill();
+    for (const s of this.sessions.values()) {
+      const proc = s.proc;
+      s.proc = undefined;
+      proc?.kill();
+    }
   }
 
   /** Coanda's guidance plus the project's own instructions, as a session should have them now. */
@@ -213,6 +265,14 @@ export class AgentManager {
     s.procInstructions = instructions;
     // A new conversation records these as its system prompt; a resumed one keeps its record.
     if (!s.sessionId) s.instructions = instructions;
+    // They go in a file: as an argument they'd outgrow Windows' limit on a command line.
+    const instructionsFile = join(
+      dirname(this.opts.sessionsFile),
+      "instructions",
+      `${createHash("sha256").update(project).digest("hex").slice(0, 16)}.md`,
+    );
+    mkdirSync(dirname(instructionsFile), { recursive: true });
+    writeFileSync(instructionsFile, instructions);
     const args = [
       ...base,
       "-p",
@@ -224,8 +284,8 @@ export class AgentManager {
       "--replay-user-messages",
       "--permission-mode",
       "auto",
-      "--append-system-prompt",
-      instructions,
+      "--append-system-prompt-file",
+      instructionsFile,
       ...(extra.args ?? []),
       ...(s.sessionId ? ["--resume", s.sessionId] : []),
     ];
@@ -388,6 +448,21 @@ export class AgentManager {
           this.push(project, s, { role: "error", text: (err as Error).message });
         }
       }
+      const questions = (Array.isArray(block?.questions) ? block.questions : [])
+        .filter((q) => typeof q?.text === "string" && q.text.trim())
+        .map((q) => ({
+          text: (q.text as string).trim(),
+          options: Array.isArray(q.options)
+            ? q.options.filter((o): o is string => typeof o === "string" && !!o.trim())
+            : [],
+        }));
+      if (questions.length) {
+        try {
+          this.opts.onQuestions(project, questions);
+        } catch (err) {
+          this.push(project, s, { role: "error", text: (err as Error).message });
+        }
+      }
       for (const r of block?.replies ?? []) {
         try {
           this.opts.onReply(r.video, Number(r.id), r);
@@ -402,7 +477,7 @@ export class AgentManager {
         });
         s.status = "error";
       } else if ((s.started ?? 0) >= (s.sent ?? 0)) {
-        s.status = block?.status === "question" ? "question" : "done";
+        s.status = block?.status === "question" || questions.length ? "question" : "done";
       }
       s.turnText = [];
       this.save();
@@ -413,6 +488,9 @@ export class AgentManager {
   private push(project: string, s: Session, message: Omit<AgentMessage, "at">) {
     s.messages.push({ ...message, at: new Date().toISOString() });
     if (s.messages.length > MAX_MESSAGES) s.messages.splice(0, s.messages.length - MAX_MESSAGES);
+    // Keep the transcript on disk as it grows, so stopping Coanda mid-turn loses none of it.
+    clearTimeout(s.saveTimer);
+    s.saveTimer = setTimeout(() => this.save(), 1000);
     this.opts.onChange(project);
   }
 
@@ -448,6 +526,7 @@ export class AgentManager {
           contextTokens: s.contextTokens,
           contextWindow: s.contextWindow,
           instructions: s.instructions,
+          working: s.status === "working",
         };
       }
     }
@@ -464,6 +543,8 @@ interface SavedSession {
   contextTokens?: number;
   contextWindow?: number;
   instructions?: string;
+  /** It was working when last saved: Coanda stopped in the middle of its turn. */
+  working?: boolean;
 }
 
 interface StreamMessage {
@@ -511,6 +592,8 @@ interface CoandaBlock {
   unvoiced?: Record<string, UnvoicedLine[]>;
   status?: string;
   replies?: CoandaReply[];
+  /** Questions for the reviewer, each answered on its own. */
+  questions?: { text?: unknown; options?: unknown }[];
 }
 
 function lastCoandaBlock(text: string): CoandaBlock | null {

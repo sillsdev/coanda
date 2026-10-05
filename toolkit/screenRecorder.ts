@@ -33,6 +33,7 @@ import {
   estimateSpeech,
   glideMs,
   SECONDS_PER_WORD,
+  typingRhythm,
   type Box,
   type TakeEvents,
 } from "./recorder.ts";
@@ -436,10 +437,12 @@ export async function startScreenRecorder(opts: ScreenRecorderOptions) {
      * starting at least `typeBeat` after the pointer last moved or pressed. */
     async type(text: string, send: (ch: string) => unknown, msPerChar = 75) {
       await r.at(pointerActed + typeBeat);
+      const rhythm = typingRhythm(text);
+      let i = 0;
       for (const ch of text) {
         keys.push(stamp());
         await send(ch);
-        await r.wait((msPerChar / 1000) * (0.6 + Math.random() * 0.8));
+        await r.wait((msPerChar / 1000) * rhythm[i++]);
       }
     },
     /** Logs a keystroke, such as Enter, and runs `press`, the project's way to press it. */
