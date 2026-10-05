@@ -5,58 +5,7 @@
 HowReel is a web app for working with Claude while it makes instructional videos. A Claude Code
 skill launches it. The first version lets you annotate a video Claude has made, so you can give
 feedback or ask for changes.
-
-## How it works
-
-- `howreel serve <folder>` starts a local server on port 4517. It serves the app, streams the
-  videos under `<folder>`, and keeps each video's annotations in a JSON file beside it
-  (`intro.mp4.howreel.json`, with frame images in `intro.mp4.howreel/`). Commit those files to
-  share annotations between reviewers.
-- **Change…** in the Folder section at the top of the sidebar opens the operating system's
-  folder chooser; **Recent** lists folders used before. The current folder and the recent ones are kept in
-  `~/.howreel/config.json`, so `howreel serve` with no folder reopens the last one.
-- In the browser, click a paused frame to drop a pin, or drag to draw an arrow, then write what
-  should change. **Send** hands every open annotation to Claude.
-- **Video projects.** A folder holding a `video-project.json` file is a video project. HowReel
-  gives each project its own Claude Code session, shown in the Claude panel on the far right when
-  a video inside the project is selected. **Send** gives the project's open annotations to that
-  session; Claude makes the changes, re-renders, and its replies land on the annotations. You can
-  also message the session directly. Each project folder in the tree has a dot for its session:
-  working, done, question or error.
-- The session is a long-running `claude -p` process in auto mode, working in the reviewed
-  folder, so it picks up that folder's `CLAUDE.md` and skills. Its session ID and transcript are
-  kept in `~/.howreel/sessions.json`, and after a restart it resumes the same conversation.
-  The sessions run with `CLAUDE_CONFIG_DIR` set to `~/.howreel/claude`, so they have a Claude login
-  of their own, apart from the machine's other Claude Code work. That folder links to the
-  reviewer's setup in `~/.claude` (CLAUDE.md, settings, skills, commands, agents, plugins, output
-  styles, and the projects folder with transcripts and memory), but not to its login or caches.
-  Clicking your avatar shows the account and offers **Switch account**; the panel offers **Log in
-  to Claude** when the sessions are signed out.
-- **The app.** "App", in the settings under the key button, sets the folder of the app a
-  project's videos are about (kept per machine in `~/.howreel/projects.json`). The session gets
-  that folder with `--add-dir`, and instructions to run and drive the app as the folder's
-  AGENTS.md and CLAUDE.md say.
-- The settings also save an ElevenLabs API key (voice) to `~/.howreel/elevenlabs_key.txt` and an
-  OpenRouter API key (images) to `~/.howreel/openrouter_key.txt`. Sessions get them as
-  `ELEVENLABS_API_KEY` and `OPENROUTER_API_KEY`, and the settings show the OpenRouter credit left.
-- Each session starts with the instructions in [agent/guidance.md](agent/guidance.md).
-- **Planning.** A project moves through a brief, an outline and a script (`brief.md`,
-  `outline.md`, `script.md`, started from the templates in [agent/templates/](agent/templates/)),
-  then `draft.mp4` and `voiced.mp4`. Starting or approving a document, or the draft video, tells
-  the project's session, which takes the next step.
-- **Making the videos.** The `toolkit/` folder holds what sessions build videos with: the
-  recorder that captures the app, take assembly, voice (ElevenLabs or Kokoro), subtitles, image
-  generation and checks. Projects import it from this checkout, so a change here reaches the next
-  take. The `howreel` CLI wraps it: `frames`, `assemble`, `odd-frames`, `subtitles`, `voice`,
-  `translated-subtitles`, `image`, and for inspecting a video `sheet`, `changes`, `levels`, `gaps`,
-  `summarize`, `check` and `words`. `howreel` with no command prints what each one does.
-- **Outside a project**, Send goes to whoever runs `howreel wait`, which blocks until something is
-  sent and prints the annotations as JSON. Claude answers each one with
-  `howreel reply <video> <id> <text>`. The skill in [skills/howreel/SKILL.md](skills/howreel/SKILL.md)
-  tells Claude how; to use it, link that folder into `~/.claude/skills/`.
-
-The reviewer's name comes from `git config user.name` in the reviewed folder (`--user` overrides
-it).
+<img width="2800" height="1528" alt="image" src="https://github.com/user-attachments/assets/9f2c7e6f-332d-44a9-bb96-f16b3f7b38cc" />
 
 ## Development
 
