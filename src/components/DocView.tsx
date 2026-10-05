@@ -151,7 +151,7 @@ export function DocView(props: Props) {
           if (/changed on disk/i.test(message)) {
             conflictRef.current = true;
             if (mountedRef.current) setConflict(true);
-          } else onError(message);
+          } else if (!/^No document/.test(message)) onError(message);
           break;
         }
       }

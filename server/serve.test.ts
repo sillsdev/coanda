@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vite-plus/test";
@@ -169,4 +169,19 @@ test("a server that can't take its port stops watching the folder", async () => 
   // A watcher's handle goes once its close has been processed.
   await new Promise((r) => setTimeout(r, 100));
   expect(watchers()).toBe(before);
+});
+
+test("saving a document that was deleted while open doesn't bring it back", async () => {
+  const doc = join(root, "lessons", "brief.md");
+  writeFileSync(doc, "# Brief\n");
+  await start();
+  const save = (text: string) =>
+    fetch(`http://127.0.0.1:${server!.port}/api/doc?video=lessons%2Fbrief.md`, {
+      method: "POST",
+      body: JSON.stringify({ text, baseMtime: 0 }),
+    });
+  rmSync(doc);
+  const res = await save("# Brief\n\nMore");
+  expect(res.status).toBe(404);
+  expect(existsSync(doc)).toBe(false);
 });

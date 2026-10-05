@@ -780,6 +780,8 @@ export function serve(
       if (!isDocument(video)) throw new HttpError(400, `Not a document: ${video}`);
       const body = (await readJson(req)) as { text?: string; baseMtime?: number };
       if (typeof body.text !== "string") throw new HttpError(400, "Give the document's text");
+      // A document deleted or renamed while open isn't brought back by its last save.
+      if (!existsSync(need().resolvePath(video))) throw new HttpError(404, `No document ${video}`);
       const saved = need().writeDoc(video, body.text, Number(body.baseMtime));
       if (!saved) throw new HttpError(409, "The document changed on disk since it was opened");
       return json(res, 200, saved);
