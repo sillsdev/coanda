@@ -3,6 +3,7 @@ import {
   applyMarkingEdits,
   busyStretches,
   cutTime,
+  oddFrames,
   findMarkingEdits,
   idleCuts,
   stillsBetween,
@@ -119,4 +120,13 @@ test("marking edits come from the project's video-project.json above the take", 
     "box: a": { width: 150 },
   });
   expect(findMarkingEdits(tmpdir(), join(tmpdir(), "out.mp4"))).toEqual({});
+});
+
+test("frames far from their neighbours' size are the ones to look at", () => {
+  const sizes = [100, 102, 98, 101, 20, 99, 100, 400, 101, 100].map((size, i) => ({
+    file: `f${i}.jpg`,
+    t: i / 30,
+    size,
+  }));
+  expect(oddFrames(sizes).map((f) => f.file)).toEqual(["f4.jpg", "f7.jpg"]);
 });

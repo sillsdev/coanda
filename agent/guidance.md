@@ -290,7 +290,10 @@ the cards, writing the picture and its timeline, ready for `coanda subtitles`. I
 box up at least 2 s and makes boxes shown together leave together. With `--trim-idle` it
 shortens stretches longer than 2 s where the picture is still and nothing is said, logged,
 marked, moved, pressed or typed, down to 1 s, and moves every time in the timeline with them.
-A recording never waits without limit on the app: give every wait for it to start, answer or
+After a take, `coanda odd-frames <take folder>` lists the frames whose file size stands out
+from their neighbours'. Look at each one (they're images in the take's `frames` folder): most
+are the app's own changes, such as a page reloading, but a dark, blank or garbled frame is a
+capture fault, and the take should be recorded again. A recording never waits without limit on the app: give every wait for it to start, answer or
 shut down a time limit, and when it won't close, close it by force rather than let the
 recording hang. `coanda gaps <file.srt>` lists the longest silences between lines. When something general
 about recording is missing or wrong, it belongs in Coanda's recorder: see "Fix the tools you

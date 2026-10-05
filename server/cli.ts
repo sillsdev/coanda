@@ -15,7 +15,7 @@ import {
   screenChanges,
   summarize,
 } from "../toolkit/measure.ts";
-import { assemble, framesToVideo, gaps } from "../toolkit/take.ts";
+import { assemble, frameSizes, framesToVideo, gaps, oddFrames } from "../toolkit/take.ts";
 import { writeTranslatedSubtitles } from "../toolkit/translatedSubtitles.ts";
 import { voice, type VoiceMode } from "../toolkit/voice.ts";
 import { serve } from "./serve.ts";
@@ -44,6 +44,10 @@ const USAGE = `Usage:
       highlight boxes, arrows, fades, pointer, clicks and keys at their times in the
       picture. Applies "markingEdits" from video-project.json, keeps every box up at least
       2 s, and with --trim-idle shortens still stretches where nothing happens to 1 s.
+  coanda odd-frames <take folder>
+      List the take's frames whose file size is far from their neighbours', with their
+      take times: the frames to look at after a take. Most are real changes in the app
+      (a page reloading, a dialog); a broken capture shows the same way.
   coanda gaps <file.srt>
       Print the ten longest silences between subtitles.
   coanda sheet <video> <out.png> <time or anchor>... [--crop W:H:X:Y] [--columns N]
@@ -250,6 +254,17 @@ async function main() {
       console.log(`${resolve(out)} (${made.seconds.toFixed(2)} s)`);
       if (made.trimmed) console.log(`${made.trimmed.toFixed(2)} s of still picture cut`);
       console.log(made.timeline);
+      break;
+    }
+
+    case "odd-frames": {
+      const [take] = positional;
+      if (!take) throw new UsageError("odd-frames needs <take folder>");
+      const odd = oddFrames(frameSizes(resolve(take)));
+      for (const f of odd) {
+        console.log(`${f.t.toFixed(2)}  ${f.file}  ${f.size} bytes (around ${f.usual})`);
+      }
+      console.log(`${odd.length} frames to look at`);
       break;
     }
 

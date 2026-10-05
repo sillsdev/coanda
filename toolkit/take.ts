@@ -3,7 +3,7 @@
 // picture's timeline (narration lines, actions, markings, the pointer, presses and keys at
 // their times in it). Optionally, stretches where nothing happens are shortened on the way.
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Marking, Timeline } from "../shared/types.ts";
 import { duration, ffmpeg, findTool, imageSize } from "./ffmpeg.ts";
@@ -49,6 +49,39 @@ export function framesToVideo(takeDir: string): string {
     out,
   ]);
   return out;
+}
+
+/**
+ * Frames whose file size is far from their neighbours' (under half or over twice the median of
+ * the `around` frames each side): the frames worth looking at after a take. Most are real
+ * changes in the app, such as a page reloading; a capture fault shows the same way.
+ */
+export function oddFrames(
+  sizes: { file: string; t: number; size: number }[],
+  around = 5,
+): { file: string; t: number; size: number; usual: number }[] {
+  return sizes.flatMap((frame, i) => {
+    const near = [...sizes.slice(Math.max(0, i - around), i), ...sizes.slice(i + 1, i + 1 + around)]
+      .map((n) => n.size)
+      .sort((a, b) => a - b);
+    if (near.length < 2) return [];
+    const usual = near[Math.floor(near.length / 2)];
+    return frame.size < usual / 2 || frame.size > usual * 2 ? [{ ...frame, usual }] : [];
+  });
+}
+
+/** The take's frames with their file sizes and take times, for oddFrames. */
+export function frameSizes(takeDir: string): { file: string; t: number; size: number }[] {
+  const frames = JSON.parse(readFileSync(join(takeDir, "frames.json"), "utf8")) as {
+    file: string;
+    t: number;
+  }[];
+  const { start } = readEvents(takeDir);
+  return frames.map((f) => ({
+    file: f.file,
+    t: Number((f.t - start).toFixed(3)),
+    size: statSync(join(takeDir, "frames", f.file)).size,
+  }));
 }
 
 export function readEvents(takeDir: string): TakeEvents {
