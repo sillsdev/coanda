@@ -30,7 +30,7 @@ import { PLANNING_STEPS, PROJECT_VIDEOS } from "../shared/types.ts";
 
 export const VIDEO_EXTENSIONS = [".mp4", ".webm", ".mov", ".m4v", ".ogv"];
 
-/** Files HowBench opens as documents, to read, edit and comment on. */
+/** Files HowReel opens as documents, to read, edit and comment on. */
 /** A project's draft or voiced video, anywhere in the project, numbered after the planning
  * documents. */
 function videoStep(name: string): { step: number } | Record<string, never> {
@@ -72,15 +72,15 @@ export class Store {
   }
 
   annotationFilePath(video: string): string {
-    return this.resolvePath(video) + ".howbench.json";
+    return this.resolvePath(video) + ".howreel.json";
   }
 
   frameDir(video: string): string {
-    return this.resolvePath(video) + ".howbench";
+    return this.resolvePath(video) + ".howreel";
   }
 
   /**
-   * A file and HowBench's own files beside it: its annotations and saved frames. For a video, also
+   * A file and HowReel's own files beside it: its annotations and saved frames. For a video, also
    * the render's files named after it (subtitles, timeline, voice report), unless another video
    * beside it has the same name and so shares them.
    */
@@ -104,7 +104,7 @@ export class Store {
     return files.filter((f) => existsSync(f));
   }
 
-  /** Renames a file, and HowBench's files beside it, within its folder. Returns its new path. */
+  /** Renames a file, and HowReel's files beside it, within its folder. Returns its new path. */
   rename(path: string, name: string): string {
     name = name.trim();
     if (!name || /[\\/:*?"<>|]/.test(name) || name === "." || name === "..") {
@@ -124,7 +124,7 @@ export class Store {
     // Annotations name their saved files by path, through the renamed file's frame folder or
     // through the renamed folder.
     const isFolder = statSync(this.resolvePath(next)).isDirectory();
-    const [oldRel, newRel] = isFolder ? [path, next] : [`${path}.howbench`, `${next}.howbench`];
+    const [oldRel, newRel] = isFolder ? [path, next] : [`${path}.howreel`, `${next}.howreel`];
     const [oldFull, newFull] = [this.resolvePath(oldRel), this.resolvePath(newRel)];
     const move = (p: string) => {
       if (p.startsWith(oldRel + "/")) return newRel + p.slice(oldRel.length);
@@ -156,9 +156,9 @@ export class Store {
       for (const entry of readdirSync(dir, { withFileTypes: true })) {
         const full = join(dir, entry.name);
         if (entry.isDirectory()) {
-          if (!entry.name.endsWith(".howbench")) walk(full);
-        } else if (entry.name.endsWith(".howbench.json")) {
-          out.push(this.toRelative(full.slice(0, -".howbench.json".length)));
+          if (!entry.name.endsWith(".howreel")) walk(full);
+        } else if (entry.name.endsWith(".howreel.json")) {
+          out.push(this.toRelative(full.slice(0, -".howreel.json".length)));
         }
       }
     };
@@ -245,16 +245,16 @@ export class Store {
     return `images/${name}`;
   }
 
-  /** Saves an image pasted into a project's chat, in the project's `.howbench/chat` folder. */
+  /** Saves an image pasted into a project's chat, in the project's `.howreel/chat` folder. */
   saveChatImage(project: string, image: Buffer, ext: string): string {
-    const dir = join(this.resolvePath(project), ".howbench", "chat");
+    const dir = join(this.resolvePath(project), ".howreel", "chat");
     mkdirSync(dir, { recursive: true });
     const file = join(dir, `pasted-${stampName()}.${ext}`);
     writeFileSync(file, image);
     return this.toRelative(file);
   }
 
-  /** Deletes a file HowBench saved beside a video, such as a frame or a pasted image. */
+  /** Deletes a file HowReel saved beside a video, such as a frame or a pasted image. */
   removeSaved(video: string, rel: string): void {
     const full = this.resolvePath(rel);
     if (dirname(full) !== this.frameDir(video)) return;
@@ -274,7 +274,7 @@ export class Store {
       if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
       const full = join(dir, entry.name);
       if (entry.isDirectory()) {
-        if (entry.name.endsWith(".howbench")) continue;
+        if (entry.name.endsWith(".howreel")) continue;
         const children = this.scan(full, inProject || isProject);
         folders.push({
           name: entry.name,
@@ -285,7 +285,8 @@ export class Store {
         });
       } else if (isVideoFile(entry.name)) {
         const path = this.toRelative(full);
-        const { annotations } = this.read(path);
+        const data = this.read(path);
+        const { annotations } = data;
         const count = (test: (a: Annotation) => boolean) => annotations.filter(test).length;
         files.push({
           name: entry.name,
@@ -296,8 +297,9 @@ export class Store {
           sent: count((a) => a.status === "sent"),
           mtime: statSync(full).mtimeMs,
           ...(inProject ? videoStep(entry.name) : {}),
+          ...(this.isApproved(path, data) ? { approved: true } : {}),
         });
-      } else if (!entry.name.endsWith(".howbench.json")) {
+      } else if (!entry.name.endsWith(".howreel.json")) {
         let mtime: number | undefined;
         try {
           mtime = statSync(full).mtimeMs;
@@ -306,7 +308,7 @@ export class Store {
         }
         const path = this.toRelative(full);
         const node: TreeNode = { name: entry.name, path, kind: "file", mtime };
-        if (isDocument(entry.name) && existsSync(full + ".howbench.json")) {
+        if (isDocument(entry.name) && existsSync(full + ".howreel.json")) {
           const { annotations, approved } = this.read(path);
           if (approved && mtime !== undefined && Math.abs(mtime - approved.mtime) <= 1) {
             node.approved = true;
@@ -373,7 +375,7 @@ export class Store {
     });
   }
 
-  /** Starts a planning document from HowBench's template, unless it's already there. */
+  /** Starts a planning document from HowReel's template, unless it's already there. */
   startPlanningStep(project: string, key: string, template: string): string {
     const step = PLANNING_STEPS.find((s) => s.key === key);
     if (!step) throw new Error(`No planning step "${key}"`);
@@ -389,7 +391,7 @@ export class Store {
   /** When the reviewer asked for the project's draft video, or null. */
   draftRequested(project: string): string | null {
     try {
-      const file = join(this.resolvePath(project), ".howbench", "planning.json");
+      const file = join(this.resolvePath(project), ".howreel", "planning.json");
       return (
         (JSON.parse(readFileSync(file, "utf8")) as { draftRequestedAt?: string })
           .draftRequestedAt ?? null
@@ -400,7 +402,7 @@ export class Store {
   }
 
   requestDraft(project: string): void {
-    const dir = join(this.resolvePath(project), ".howbench");
+    const dir = join(this.resolvePath(project), ".howreel");
     mkdirSync(dir, { recursive: true });
     writeFileSync(
       join(dir, "planning.json"),
@@ -417,7 +419,17 @@ export class Store {
     });
   }
 
-  /** Claude's questions to the reviewer in a project, kept in its `.howbench` folder. */
+  /** The file was approved as it is now. */
+  isApproved(path: string, data: AnnotationFile = this.read(path)): boolean {
+    if (!data.approved) return false;
+    try {
+      return Math.abs(statSync(this.resolvePath(path)).mtimeMs - data.approved.mtime) <= 1;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Claude's questions to the reviewer in a project, kept in its `.howreel` folder. */
   questions(project: string): AgentQuestion[] {
     try {
       return JSON.parse(readFileSync(this.questionsFile(project), "utf8")) as AgentQuestion[];
@@ -435,7 +447,7 @@ export class Store {
   }
 
   private questionsFile(project: string): string {
-    return join(this.resolvePath(project), ".howbench", "questions.json");
+    return join(this.resolvePath(project), ".howreel", "questions.json");
   }
 
   /** Makes a folder a project, with its planning documents ready, each from its template. Any
@@ -485,7 +497,7 @@ export class Store {
     return ext ? stem + ext : null;
   }
 
-  /** The unvoiced lines in a `<name>.voice.json`, as `howbench voice` writes it. */
+  /** The unvoiced lines in a `<name>.voice.json`, as `howreel voice` writes it. */
   readVoiceReport(report: string): { unvoiced: UnvoicedLine[] } | null {
     try {
       const data = JSON.parse(readFileSync(this.resolvePath(report), "utf8")) as {

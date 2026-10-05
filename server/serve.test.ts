@@ -30,7 +30,7 @@ let root: string;
 let server: { close: () => void; port: number } | undefined;
 
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), "howbench-serve-"));
+  dir = mkdtempSync(join(tmpdir(), "howreel-serve-"));
   root = join(dir, "videos");
   mkdirSync(join(root, "lessons"), { recursive: true });
 });
@@ -57,12 +57,12 @@ const note = (id: number, status: Annotation["status"]): Annotation => ({
 
 const annotate = (video: string, ...annotations: Annotation[]) => {
   writeFileSync(join(root, video), "");
-  writeFileSync(join(root, `${video}.howbench.json`), JSON.stringify({ annotations }));
+  writeFileSync(join(root, `${video}.howreel.json`), JSON.stringify({ annotations }));
 };
 
 const statuses = (video: string) =>
   (
-    JSON.parse(readFileSync(join(root, `${video}.howbench.json`), "utf8")) as AnnotationFile
+    JSON.parse(readFileSync(join(root, `${video}.howreel.json`), "utf8")) as AnnotationFile
   ).annotations.map((a) => a.status);
 
 async function start(claudeCommand?: string[]) {
@@ -81,7 +81,7 @@ async function start(claudeCommand?: string[]) {
   };
 }
 
-test("one Send goes to one waiting `howbench wait`, not to every one", async () => {
+test("one Send goes to one waiting `howreel wait`, not to every one", async () => {
   annotate("intro.mp4", note(1, "open"));
   const api = await start();
   const first = api.get("/api/wait?hold=2");
@@ -104,7 +104,7 @@ test("a project's Send leaves the notes of a project inside it alone", async () 
   expect(statuses("lessons/demo.mp4")).toEqual(["open"]);
 });
 
-test("`howbench wait` never gets notes that belong to a project", async () => {
+test("`howreel wait` never gets notes that belong to a project", async () => {
   writeFileSync(join(root, "lessons", "video-project.json"), "{}");
   annotate("intro.mp4", note(1, "sent"));
   annotate("lessons/demo.mp4", note(1, "sent"));

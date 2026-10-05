@@ -19,9 +19,9 @@ let close: () => void;
 
 test.beforeAll(async () => {
   if (!existsSync(join(repo, "dist", "index.html"))) throw new Error("Run `vp build` first");
-  root = mkdtempSync(join(tmpdir(), "howbench-e2e-"));
+  root = mkdtempSync(join(tmpdir(), "howreel-e2e-"));
   cpSync(join(repo, "samples"), root, { recursive: true });
-  const configFile = join(mkdtempSync(join(tmpdir(), "howbench-config-")), "config.json");
+  const configFile = join(mkdtempSync(join(tmpdir(), "howreel-config-")), "config.json");
   ({ port, close } = await serve({ root, port: 0, user: "Ruth Ellis", configFile }));
 });
 
@@ -30,13 +30,13 @@ test.afterAll(() => {
   rmSync(root, { recursive: true, force: true });
 });
 
-/** Runs `howbench <args>` against the test server and returns stdout. */
-async function howbench(...args: string[]) {
+/** Runs `howreel <args>` against the test server and returns stdout. */
+async function howreel(...args: string[]) {
   const { stdout } = await run(process.execPath, [cli, ...args, "--port", String(port)]);
   return stdout;
 }
 
-/** Starts `howbench wait` and resolves with what it prints when it exits. */
+/** Starts `howreel wait` and resolves with what it prints when it exits. */
 function startWait(): Promise<SentAnnotation[]> {
   return new Promise((resolvePromise, reject) => {
     const child = spawn(process.execPath, [cli, "wait", "--port", String(port)]);
@@ -53,7 +53,7 @@ function startWait(): Promise<SentAnnotation[]> {
 }
 
 function annotationFile(video: string): AnnotationFile {
-  return JSON.parse(readFileSync(join(root, video + ".howbench.json"), "utf8")) as AnnotationFile;
+  return JSON.parse(readFileSync(join(root, video + ".howreel.json"), "utf8")) as AnnotationFile;
 }
 
 async function openVideo(page: Page, path: string) {
@@ -84,20 +84,20 @@ async function addPin(page: Page, xPct: number, yPct: number, text: string) {
 
 test("annotate videos, send them to Claude, and see Claude's replies", async ({ page }) => {
   // With nothing sent, each wait request comes back empty after its hold time, and
-  // `howbench wait` keeps asking until its own --timeout.
+  // `howreel wait` keeps asking until its own --timeout.
   const started = Date.now();
   const res = await fetch(`http://127.0.0.1:${port}/api/wait?hold=1`);
   expect(await res.json()).toEqual([]);
   expect(Date.now() - started).toBeGreaterThanOrEqual(900);
-  expect(JSON.parse(await howbench("wait", "--timeout", "3"))).toEqual([]);
+  expect(JSON.parse(await howreel("wait", "--timeout", "3"))).toEqual([]);
   expect(Date.now() - started).toBeGreaterThanOrEqual(3900);
 
   await page.goto(`http://127.0.0.1:${port}/`);
 
   // Header, folder tree and reviewer.
-  await expect(page.locator(".brand-name")).toHaveText("HowBench");
+  await expect(page.locator(".brand-name")).toHaveText("HowReel");
   await expect(page.locator(".tree-row:not(.file)")).toHaveCount(5);
-  await expect(page.locator(".reviewers .avatar")).toHaveText(["RE"]);
+  await expect(page.locator(".avatar-btn .avatar")).toHaveText(["RE"]);
   await expect(page.locator(".player.empty")).toBeVisible();
 
   // A pin on welcome.webm.
@@ -148,7 +148,7 @@ test("annotate videos, send them to Claude, and see Claude's replies", async ({ 
   );
   await page.screenshot({ path: join(shots, "3-ready-to-send.png") });
 
-  // Claude is listening with `howbench wait`; the reviewer clicks Send.
+  // Claude is listening with `howreel wait`; the reviewer clicks Send.
   const waiting = startWait();
   await expect
     .poll(() => page.evaluate(() => fetch("/api/status").then((r) => r.json())))
@@ -172,8 +172,8 @@ test("annotate videos, send them to Claude, and see Claude's replies", async ({ 
   });
   await page.screenshot({ path: join(shots, "4-sent.png") });
 
-  // Claude replies with `howbench reply`; the open page updates without a reload.
-  await howbench(
+  // Claude replies with `howreel reply`; the open page updates without a reload.
+  await howreel(
     "reply",
     "getting-started/first-project.webm",
     "1",
@@ -181,8 +181,8 @@ test("annotate videos, send them to Claude, and see Claude's replies", async ({ 
   );
   await expect(page.getByTestId("card-1")).toContainText("Extended the hold to 3 seconds.");
   await expect(page.getByTestId("card-1")).toHaveAttribute("data-status", "replied");
-  await howbench("reply", "getting-started/welcome.webm", "1", "Doubled the counter's font size.");
-  await howbench("reply", "getting-started/welcome.webm", "2", "Changed it to #6a9cf5.");
+  await howreel("reply", "getting-started/welcome.webm", "1", "Doubled the counter's font size.");
+  await howreel("reply", "getting-started/welcome.webm", "2", "Changed it to #6a9cf5.");
   await expect(page.getByTestId("send")).toBeDisabled();
 
   await openVideo(page, "getting-started/welcome.webm");
@@ -219,13 +219,13 @@ test("annotate videos, send them to Claude, and see Claude's replies", async ({ 
   await expect(page.getByTestId("card-1")).toHaveAttribute("data-status", "resolved");
   await page.screenshot({ path: join(shots, "6-reply-and-resolve.png") });
 
-  // Sending while nobody is waiting is kept until Claude next runs `howbench wait`.
+  // Sending while nobody is waiting is kept until Claude next runs `howreel wait`.
   await page.getByTestId("send").click();
   await expect(page.getByTestId("send")).toBeDisabled();
   expect(await (await fetch(`http://127.0.0.1:${port}/api/status`)).json()).toMatchObject({
     undelivered: 1,
   });
-  const later = JSON.parse(await howbench("wait")) as SentAnnotation[];
+  const later = JSON.parse(await howreel("wait")) as SentAnnotation[];
   expect(await (await fetch(`http://127.0.0.1:${port}/api/status`)).json()).toMatchObject({
     undelivered: 0,
   });
@@ -242,7 +242,7 @@ test("annotate videos, send them to Claude, and see Claude's replies", async ({ 
 });
 
 test("switch the folder from the sidebar, and reopen it on the next run", async ({ page }) => {
-  const scratch = mkdtempSync(join(tmpdir(), "howbench-folders-"));
+  const scratch = mkdtempSync(join(tmpdir(), "howreel-folders-"));
   const lessons = join(scratch, "lessons");
   const extras = join(scratch, "extras");
   cpSync(join(repo, "samples", "getting-started"), lessons, { recursive: true });

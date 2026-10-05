@@ -57,14 +57,14 @@ async function selectWords(page: Page, words: string) {
 /** How many passages are marked as commented, and as the selected comment's. */
 const highlighted = (page: Page) =>
   page.evaluate(() => ({
-    other: CSS.highlights.get("howbench-comment")?.size ?? 0,
-    active: CSS.highlights.get("howbench-comment-active")?.size ?? 0,
+    other: CSS.highlights.get("howreel-comment")?.size ?? 0,
+    active: CSS.highlights.get("howreel-comment-active")?.size ?? 0,
   }));
 
 test("write a brief, paste screenshots into it, comment on it, and answer Claude", async ({
   page,
 }) => {
-  const scratch = mkdtempSync(join(tmpdir(), "howbench-docs-"));
+  const scratch = mkdtempSync(join(tmpdir(), "howreel-docs-"));
   const root = join(scratch, "videos");
   cpSync(join(repo, "samples"), root, { recursive: true });
   const project = join(root, "getting-started");
@@ -201,7 +201,7 @@ test("write a brief, paste screenshots into it, comment on it, and answer Claude
 test("plan a video: start the brief from the project page, approve it, and go on", async ({
   page,
 }) => {
-  const scratch = mkdtempSync(join(tmpdir(), "howbench-plan-"));
+  const scratch = mkdtempSync(join(tmpdir(), "howreel-plan-"));
   const root = join(scratch, "videos");
   cpSync(join(repo, "samples"), root, { recursive: true });
   const project = join(root, "getting-started");
@@ -255,7 +255,7 @@ test("plan a video: start the brief from the project page, approve it, and go on
       page.getByTestId("step-outline").getByRole("button", { name: "Start" }),
     ).toBeDisabled();
 
-    // Starting the brief makes it from HowBench's template, opens it, and has Claude begin.
+    // Starting the brief makes it from HowReel's template, opens it, and has Claude begin.
     await page.getByTestId("step-brief").getByRole("button", { name: "Start" }).click();
     await expect(page.getByTestId("doc-page").locator(".md-h2").first()).toHaveText("Audience");
     expect(readFileSync(join(project, "brief.md"), "utf8")).toContain("## Learning objectives");
@@ -320,7 +320,7 @@ test("plan a video: start the brief from the project page, approve it, and go on
 test("Claude's questions show in the chat, and each answer goes to Claude at once", async ({
   page,
 }) => {
-  const scratch = mkdtempSync(join(tmpdir(), "howbench-ask-"));
+  const scratch = mkdtempSync(join(tmpdir(), "howreel-ask-"));
   const root = join(scratch, "videos");
   cpSync(join(repo, "samples"), root, { recursive: true });
   writeFileSync(join(root, "getting-started", "video-project.json"), "{}\n");

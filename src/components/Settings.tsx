@@ -5,9 +5,9 @@ import { KeyIcon, PasteIcon } from "./icons.tsx";
 interface Props {
   saved: SavedKeys;
   onSaveKey: (which: keyof SavedKeys, key: string) => Promise<void>;
-  /** The selected project's Bloom worktree, when a project is selected; its path is null when
-   * none is chosen. */
-  bloom?: { path: string | null; onChoose: () => void };
+  /** The folder of the selected project's app, when a project is selected; its path is null
+   * when none is chosen. */
+  app?: { path: string | null; onChoose: () => void };
 }
 
 const KEYS: { which: keyof SavedKeys; label: string }[] = [
@@ -16,7 +16,7 @@ const KEYS: { which: keyof SavedKeys; label: string }[] = [
 ];
 
 /** The key button in the header, with a place for each API key Claude's tools use. */
-export function Settings({ saved, onSaveKey, bloom }: Props) {
+export function Settings({ saved, onSaveKey, app }: Props) {
   const [open, setOpen] = useState(false);
   const boxRef = useRef<HTMLDivElement>(null);
   /** What's left on the OpenRouter account, fetched each time the box opens. */
@@ -56,17 +56,17 @@ export function Settings({ saved, onSaveKey, bloom }: Props) {
       </button>
       {open && (
         <div className="settings-pop" data-testid="settings">
-          {bloom && (
+          {app && (
             <div className="key-field">
               <div className="key-head">
-                <span className="eyebrow">Bloom for this project</span>
-                <button className="link-btn small-btn push-right" onClick={bloom.onChoose}>
-                  {bloom.path ? "Change…" : "Choose…"}
+                <span className="eyebrow">App for this project</span>
+                <button className="link-btn small-btn push-right" onClick={app.onChoose}>
+                  {app.path ? "Change…" : "Choose…"}
                 </button>
               </div>
-              {bloom.path && (
-                <div className="key-masked mono" title={bloom.path}>
-                  {bloom.path}
+              {app.path && (
+                <div className="key-masked mono" title={app.path}>
+                  {app.path}
                 </div>
               )}
             </div>

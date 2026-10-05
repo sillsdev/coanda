@@ -1,4 +1,4 @@
-// Checks of a finished video (a draft from `howbench subtitles`, or a voiced video from `howbench
+// Checks of a finished video (a draft from `howreel subtitles`, or a voiced video from `howreel
 // voice`) against its own timeline, `<name>.timeline.json` beside it, and its voice report,
 // `<name>.voice.json`. Each check returns what it found rather than printing it; runChecks runs
 // them all. Timing that the viewer sees is measured in the video itself.
@@ -624,7 +624,7 @@ export async function transcribe(
   model = "scribe_v1",
   language?: string,
 ): Promise<HeardWord[]> {
-  const audio = join(tmpdir(), `howbench-words-${process.pid}-${Date.now()}.mp3`);
+  const audio = join(tmpdir(), `howreel-words-${process.pid}-${Date.now()}.mp3`);
   try {
     ffmpeg(["-i", video, "-vn", "-ac", "1", "-ar", "16000", "-b:a", "48k", audio]);
     const form = new FormData();

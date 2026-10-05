@@ -12,7 +12,7 @@ export interface Config {
 const MAX_RECENT = 8;
 
 export function defaultConfigFile(): string {
-  return process.env.HOWBENCH_CONFIG ?? join(homedir(), ".howbench", "config.json");
+  return process.env.HOWREEL_CONFIG ?? join(homedir(), ".howreel", "config.json");
 }
 
 export function loadConfig(file: string): Config {

@@ -1,8 +1,8 @@
 # What the first video agent taught us
 
-Source material for HowBench's guidance to video agents. On 2026-10-03 the HowBench dev session
+Source material for HowReel's guidance to video agents. On 2026-10-03 the HowReel dev session
 asked the Claude session revising "Using the Basic Book Template" (in bloom-training-videos)
-what HowBench should tell every video agent. These are its answers, verbatim. The guidance is
+what HowReel should tell every video agent. These are its answers, verbatim. The guidance is
 built from them; this file records where it came from.
 
 ## 1. Which lessons are general, what it lacked at the start, what got in its way
@@ -15,7 +15,7 @@ Four of the five are general, though some need rewording. Point 5 is about this 
 
 - _Sort each note by what it changes._ For an agent that knows nothing about Bloom: "Before changing anything, decide for each note which part of the video it touches: the words, the audio, things drawn over the picture (pointer, highlights, captions), the footage itself, or the order and timing. The answer decides how much has to be redone." The categories depend on how a video is built, so the agent also has to find out what each one is made from, which leads to the next point.
 - _Redo only what a note affects._ The goal is general and the method isn't. The general wording: "Work out the smallest rebuild that makes the change. If the way this video is built forces a much larger redo than the note deserves, say so in your plan and don't just do it silently." In this session I re-recorded six minutes for four notes, two of which only touched the words, and the reviewer had to ask why.
-- _Respect the voice switch._ I'd widen it: "Some steps cost money or can't be undone, such as generating a voice, publishing, or uploading. HowBench tells you which are allowed. When one isn't, reuse what exists, or leave a marked placeholder, and say in your reply which parts are placeholders."
+- _Respect the voice switch._ I'd widen it: "Some steps cost money or can't be undone, such as generating a voice, publishing, or uploading. HowReel tells you which are allowed. When one isn't, reuse what exists, or leave a marked placeholder, and say in your reply which parts are placeholders."
 - _Show an edit plan before acting._ This is general as it stands. The plan should list each note, its kind, what will be redone, and any reading of the note you aren't sure of. I'd add that the plan is where interpretation questions belong. For note 1, Hatton asked me to "just say this is an image placeholder." I kept an existing sentence that says roughly that, because rewording would have needed new audio. That was a judgement Hatton should have seen before the build, not only afterwards in a reply.
 - _Start each project inside the main pipeline_ is about this repo. What's general in it: "Before your first edit, find out how this video is built and how to rebuild it. If you can't find out, ask; don't reverse-engineer it."
 
@@ -27,20 +27,20 @@ Three general points I'd add that weren't in my list:
 
 **What I'd have wanted to be told at the start**
 
-- **Where this video's build recipe is.** `video-project.json` is `{}`. I found how the draft was made by reading the transcript of an earlier session. HowBench could require each video to have a recipe file, or a line in it, giving the source folder, the rebuild command, and which outputs are generated. When there isn't one, it could tell the agent to establish that first.
-- **What voiceReady false means for the draft.** The instructions say to reuse the existing narration or a placeholder. I reused it, and Hatton was surprised there was a voice at all. Either the draft should be silent with subtitles until the switch is on, or reused audio is fine, and HowBench should say which.
+- **Where this video's build recipe is.** `video-project.json` is `{}`. I found how the draft was made by reading the transcript of an earlier session. HowReel could require each video to have a recipe file, or a line in it, giving the source folder, the rebuild command, and which outputs are generated. When there isn't one, it could tell the agent to establish that first.
+- **What voiceReady false means for the draft.** The instructions say to reuse the existing narration or a placeholder. I reused it, and Hatton was surprised there was a voice at all. Either the draft should be silent with subtitles until the switch is on, or reused audio is fine, and HowReel should say which.
 - **That this is building a system.** If I'd known the video was a test bed for a process, I'd have raised "this pipeline can't do small edits" before re-recording, not after.
 - **How much work a round is expected to take.** Re-recording took about ten minutes this time, and moving the video onto the main pipeline would take hours. One sentence such as "if a round needs more than X, propose it first" would have changed what I did.
-- **HowBench's own rules, in HowBench's words.** For example, whether the reply should answer each note on its own or can refer to a shared fix.
+- **HowReel's own rules, in HowReel's words.** For example, whether the reply should answer each note on its own or can refer to a shared fix.
 
-**What got in my way from HowBench's side**
+**What got in my way from HowReel's side**
 
 - **The frame images were the most useful thing in the annotation.** I couldn't have placed the pin for note 3 without one. For notes about something over time (note 2's "disappears just before we click"), a short run of frames, or the second before and after the pin, would have saved me extracting them myself.
 - **Re-rendering to the same path destroys the version that was reviewed.** The old frame images now point at times in a video that no longer exists, and nobody can compare before and after. Keeping the previous render beside the new one, perhaps under a version number, would fix both problems.
-- **Old times go stale with nowhere to put the new ones.** If a reply could carry a new time per note, HowBench could show each answer at the right moment in the new render.
+- **Old times go stale with nowhere to put the new ones.** If a reply could carry a new time per note, HowReel could show each answer at the right moment in the new render.
 - **The reply status is too coarse.** "done" and "question" apply to the whole turn. I needed "done with a caveat" for note 4 (the comma), and could have used "needs voice" for a note that can't be finished while the switch is off. A status per reply (done, partial, waiting on voice, question) would let Hatton see at a glance what's left.
-- **voiceReady repeats on every annotation.** That's harmless, but it's a property of the video, so it belongs once per send, along with the recipe location if HowBench learns it.
-- **HowBench doesn't show local slash-command output.** Hatton ran `/compact` and saw nothing. I could only confirm that it ran, from my side.
+- **voiceReady repeats on every annotation.** That's harmless, but it's a property of the video, so it belongs once per send, along with the recipe location if HowReel learns it.
+- **HowReel doesn't show local slash-command output.** Hatton ran `/compact` and saw nothing. I could only confirm that it ran, from my side.
 - **Messages sent while I'm working arrive fine.** Hatton's "I don't expect any voice" reached me mid-turn and I could answer it in the same turn.
 
 I'm leaving the requirement list out of SKILL.md and LESSONS.md as you asked. The changes I made earlier for this video's notes are still in place: the shot list, `voice.mjs`, PLAN.md and the new drafts. Nothing is committed.
@@ -188,7 +188,7 @@ The parts I'd keep in every plan: one line on what gets redone and why; paid or 
 
 **Versions**
 
-I'd have HowBench keep the old file, with one change: make the copy when Hatton sends the notes, not when the file is overwritten. The render he annotated is the one the notes, frames and times refer to, so that is the one worth keeping. Copying at send time also avoids catching me halfway through writing the new file. HowBench can see the send happen, but it can't reliably tell when I'm about to overwrite. The copy is about 20 MB for this video, and a send happens a few times a day.
+I'd have HowReel keep the old file, with one change: make the copy when Hatton sends the notes, not when the file is overwritten. The render he annotated is the one the notes, frames and times refer to, so that is the one worth keeping. Copying at send time also avoids catching me halfway through writing the new file. HowReel can see the send happen, but it can't reliably tell when I'm about to overwrite. The copy is about 20 MB for this video, and a send happens a few times a day.
 
 Numbered files would mean every agent and every recipe has to work out the next number and pass it through its build scripts. Some agent will forget, and the version history will then have a gap exactly where it matters. One small thing would help from my side: if the send told me where the reviewed version was saved, I could build before-and-after frame strips for my checks.
 
@@ -411,7 +411,7 @@ One `events.json` per section. Times are seconds from the start of capture, and 
 - `move` is logged at every step of a glide, every 16 ms, at the position the real mouse was sent to. **[main pipeline]**
 - Every action gets a `key`. The project can pass a name, and otherwise the key comes from the element's accessible name or text. **[idea]** Today only a handful of actions are logged **[seen]**.
 - `line` lets the narration key differ from its words (`r.say("flower", "…")`), so a rewording keeps the key and the notes stay with it. **[idea]**, though `say` itself is **[seen]**.
-- The timeline for `howbench voice` comes straight from `line`, `press` and `key` events. Its format is what this video uses now **[seen]**.
+- The timeline for `howreel voice` comes straight from `line`, `press` and `key` events. Its format is what this video uses now **[seen]**.
 
 ### 3. Drawing at build time
 

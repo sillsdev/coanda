@@ -8,14 +8,14 @@
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = New-Object Text.UTF8Encoding $false
 
-if (-not ('HowBenchWin' -as [type])) {
+if (-not ('HowReelWin' -as [type])) {
     Add-Type -TypeDefinition @'
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
 
-public static class HowBenchWin {
+public static class HowReelWin {
     [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
     [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X, Y; }
     public delegate bool EnumProc(IntPtr h, IntPtr l);
@@ -117,7 +117,7 @@ public interface IDXGIAdapter {
 [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
 public struct DXGI_OUTPUT_DESC {
     [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string DeviceName;
-    public HowBenchWin.RECT DesktopCoordinates;
+    public HowReelWin.RECT DesktopCoordinates;
     public int AttachedToDesktop;
     public int Rotation;
     public IntPtr Monitor;
@@ -129,7 +129,7 @@ public interface IDXGIOutput {
     [PreserveSig] int GetDesc(out DXGI_OUTPUT_DESC desc);
 }
 
-public static class HowBenchDxgi {
+public static class HowReelDxgi {
     [DllImport("dxgi.dll")] static extern int CreateDXGIFactory1(ref Guid riid, [MarshalAs(UnmanagedType.IUnknown)] out object factory);
 
     /** The outputs of the first graphics adapter, in the order ffmpeg's ddagrab numbers them. */
@@ -154,60 +154,60 @@ public static class HowBenchDxgi {
 }
 
 # Per-monitor aware (v2). Fails harmlessly if the process's awareness is already set.
-[HowBenchWin]::SetProcessDpiAwarenessContext([IntPtr](-4)) | Out-Null
+[HowReelWin]::SetProcessDpiAwarenessContext([IntPtr](-4)) | Out-Null
 
 function ConvertTo-Box($r) {
     [ordered]@{ x = $r.Left; y = $r.Top; width = $r.Right - $r.Left; height = $r.Bottom - $r.Top }
 }
 
 # What the TypeScript side reads about a window, including the visible windows above it that
-# overlap it, or overlap $env:HOWBENCH_AREA ("x,y,width,height") if set: anything there would be
+# overlap it, or overlap $env:HOWREEL_AREA ("x,y,width,height") if set: anything there would be
 # in a screen recording of it.
 function Get-WindowInfo([IntPtr]$h, [System.Collections.Generic.List[IntPtr]]$zOrder) {
-    $frame = [HowBenchWin]::Frame($h)
+    $frame = [HowReelWin]::Frame($h)
     $area = $frame
-    if ($env:HOWBENCH_AREA) {
-        $x, $y, $w, $ht = $env:HOWBENCH_AREA.Split(',') | ForEach-Object { [int]$_ }
-        $area = New-Object HowBenchWin+RECT
+    if ($env:HOWREEL_AREA) {
+        $x, $y, $w, $ht = $env:HOWREEL_AREA.Split(',') | ForEach-Object { [int]$_ }
+        $area = New-Object HowReelWin+RECT
         $area.Left = $x; $area.Top = $y; $area.Right = $x + $w; $area.Bottom = $y + $ht
     }
-    $windowPid = [HowBenchWin]::ProcessId($h)
+    $windowPid = [HowReelWin]::ProcessId($h)
     $above = @()
     foreach ($other in $zOrder) {
         if ($other -eq $h) { break }
-        if ([HowBenchWin]::Cloaked($other)) { continue }
-        $r = [HowBenchWin]::Frame($other)
-        if ($r.Right -le $r.Left -or $r.Bottom -le $r.Top -or -not [HowBenchWin]::Overlap($r, $area)) { continue }
-        $otherPid = [HowBenchWin]::ProcessId($other)
+        if ([HowReelWin]::Cloaked($other)) { continue }
+        $r = [HowReelWin]::Frame($other)
+        if ($r.Right -le $r.Left -or $r.Bottom -le $r.Top -or -not [HowReelWin]::Overlap($r, $area)) { continue }
+        $otherPid = [HowReelWin]::ProcessId($other)
         $name = try { (Get-Process -Id $otherPid).ProcessName } catch { '' }
-        $above += [ordered]@{ pid = $otherPid; process = $name; className = [HowBenchWin]::ClassName($other); frame = ConvertTo-Box $r }
+        $above += [ordered]@{ pid = $otherPid; process = $name; className = [HowReelWin]::ClassName($other); frame = ConvertTo-Box $r }
     }
     [ordered]@{
         hwnd = $h.ToInt64()
         pid = $windowPid
-        title = [HowBenchWin]::Title($h)
-        className = [HowBenchWin]::ClassName($h)
+        title = [HowReelWin]::Title($h)
+        className = [HowReelWin]::ClassName($h)
         frame = ConvertTo-Box $frame
-        client = ConvertTo-Box ([HowBenchWin]::Client($h))
-        dpi = [HowBenchWin]::MonitorDpi($h)
-        minimized = [HowBenchWin]::IsIconic($h)
-        cloaked = [HowBenchWin]::Cloaked($h)
-        foreground = [HowBenchWin]::GetForegroundWindow() -eq $h
+        client = ConvertTo-Box ([HowReelWin]::Client($h))
+        dpi = [HowReelWin]::MonitorDpi($h)
+        minimized = [HowReelWin]::IsIconic($h)
+        cloaked = [HowReelWin]::Cloaked($h)
+        foreground = [HowReelWin]::GetForegroundWindow() -eq $h
         above = @($above)
     }
 }
 
 function Get-TargetWindows {
-    $zOrder = [HowBenchWin]::TopLevel()
+    $zOrder = [HowReelWin]::TopLevel()
     $hits = @()
-    if ($env:HOWBENCH_HWND) {
-        $h = [IntPtr][int64]$env:HOWBENCH_HWND
-        if (-not [HowBenchWin]::IsWindow($h)) { throw "No window $($env:HOWBENCH_HWND)" }
+    if ($env:HOWREEL_HWND) {
+        $h = [IntPtr][int64]$env:HOWREEL_HWND
+        if (-not [HowReelWin]::IsWindow($h)) { throw "No window $($env:HOWREEL_HWND)" }
         return @(Get-WindowInfo $h $zOrder)
     }
     foreach ($h in $zOrder) {
-        if ($env:HOWBENCH_PID -and [HowBenchWin]::ProcessId($h) -ne [int]$env:HOWBENCH_PID) { continue }
-        if ($env:HOWBENCH_TITLE -and -not ([HowBenchWin]::Title($h) -match $env:HOWBENCH_TITLE)) { continue }
+        if ($env:HOWREEL_PID -and [HowReelWin]::ProcessId($h) -ne [int]$env:HOWREEL_PID) { continue }
+        if ($env:HOWREEL_TITLE -and -not ([HowReelWin]::Title($h) -match $env:HOWREEL_TITLE)) { continue }
         $hits += , (Get-WindowInfo $h $zOrder)
     }
     return @($hits)

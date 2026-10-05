@@ -1,5 +1,5 @@
 // A stand-in for the `claude` CLI, for the end-to-end tests. It speaks the stream-json
-// protocol HowBench uses and keeps a turn count per session in $FAKE_CLAUDE_STATE, so a test can
+// protocol HowReel uses and keeps a turn count per session in $FAKE_CLAUDE_STATE, so a test can
 // tell a resumed conversation from a new one.
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -105,7 +105,7 @@ async function turn(text) {
   const unvoiced = {};
   const timeMap = {};
   const marker = "Annotations from the reviewer:";
-  // A send may follow a "[HowBench] instructions have changed" preface.
+  // A send may follow a "[HowReel] instructions have changed" preface.
   if (text.includes(marker)) {
     const send = JSON.parse(text.slice(text.indexOf(marker) + marker.length));
     // A note asking to insert words gets a line with no recording, as a real build would.
@@ -145,7 +145,7 @@ async function turn(text) {
     }
   }
   // A voice pass records every missing line.
-  const pass = /^\[HowBench\] Voice pass for (.+?)\. /.exec(text);
+  const pass = /^\[HowReel\] Voice pass for (.+?)\. /.exec(text);
   if (pass) unvoiced[pass[1]] = [];
   // Asked to ask, it asks two questions, as cards for the reviewer to answer.
   const questions = /ask me/i.test(text)
@@ -156,7 +156,7 @@ async function turn(text) {
     : [];
   const status = text.includes("?") ? "question" : "done";
   const block = JSON.stringify({ status, replies, unvoiced, timeMap, questions });
-  say([{ type: "text", text: "Rendered.\n\n```howbench\n" + block + "\n```" }]);
+  say([{ type: "text", text: "Rendered.\n\n```howreel\n" + block + "\n```" }]);
   out({
     type: "result",
     subtype: "success",

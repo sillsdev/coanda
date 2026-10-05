@@ -89,7 +89,7 @@ export function runScript<T>(name: string, env: Record<string, string | number |
 function scriptEnv(env: Record<string, string | number | undefined>) {
   const out: Record<string, string> = {};
   for (const [key, value] of Object.entries(env)) {
-    if (value !== undefined) out[`HOWBENCH_${key}`] = String(value);
+    if (value !== undefined) out[`HOWREEL_${key}`] = String(value);
   }
   return out;
 }

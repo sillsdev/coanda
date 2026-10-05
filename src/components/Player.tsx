@@ -11,7 +11,7 @@ import {
 import type { Annotation, UnvoicedLine } from "../../shared/types.ts";
 import type { NewAnnotation } from "../api.ts";
 import { formatTime } from "../format.ts";
-import { CaptionsIcon, MicIcon, PauseIcon, PlayIcon } from "./icons.tsx";
+import { CaptionsIcon, CheckIcon, PauseIcon, PlayIcon } from "./icons.tsx";
 import { usePastedImages } from "../pastedImages.ts";
 import { Thumbs } from "./PastedImages.tsx";
 import { Avatar } from "./Avatar.tsx";
@@ -54,8 +54,13 @@ interface Props {
   renderedAt: number | null;
   /** Narration lines this render has no recording for. */
   unvoiced: UnvoicedLine[];
-  /** Asks the project's session to record the missing voice; absent outside a project. */
-  onVoicePass?: () => void;
+  /** For a project's draft video: whether it's approved as it is now, and the way to change
+   * that. */
+  approved?: boolean;
+  onApprove?: (approved: boolean) => void;
+  /** Asks the project's session for the voiced video, once the draft is approved; absent when
+   * there is one. */
+  onMakeVoiced?: () => void;
   /** URLs of subtitle tracks for this video, as WebVTT. */
   subtitles: string[];
   showSubtitles: boolean;
@@ -351,18 +356,22 @@ export function Player(props: Props) {
             New render
           </span>
         )}
-        <button
-          className="btn btn-ghost-outline voice-btn"
-          data-testid="voice-pass"
-          disabled={!props.onVoicePass}
-          onClick={props.onVoicePass}
-        >
-          <MicIcon />
-          Voice video
-          {props.unvoiced.length > 0 && (
-            <span className="count-badge">{props.unvoiced.length}</span>
-          )}
-        </button>
+        {props.onApprove && (
+          <button
+            className={`btn approve-btn${props.approved ? " on" : ""}`}
+            data-testid="approve"
+            aria-pressed={props.approved}
+            onClick={() => props.onApprove!(!props.approved)}
+          >
+            <CheckIcon size={13} />
+            {props.approved ? "Approved" : "Approve"}
+          </button>
+        )}
+        {props.approved && props.onMakeVoiced && (
+          <button className="btn btn-primary" data-testid="next-step" onClick={props.onMakeVoiced}>
+            Make voiced video
+          </button>
+        )}
       </div>
 
       <div className="stage-area" ref={areaRef}>

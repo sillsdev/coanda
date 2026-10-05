@@ -2,7 +2,7 @@
 // as a small screen rendered sharp, captures frames, draws a pointer and click ripples into the
 // page, paces narration lines, and logs every line, action, highlight box, arrow and dissolve to
 // events.json, with where the pointer went, each press and each keystroke. Boxes, arrows and
-// dissolves are not drawn into the frames: `howbench subtitles` and `howbench voice` draw them from
+// dissolves are not drawn into the frames: `howreel subtitles` and `howreel voice` draw them from
 // the picture's timeline, so one can change without a new recording.
 //
 // Its pacing follows what reviewers asked for: a move with no duration given takes 400 ms plus
@@ -612,7 +612,7 @@ async function installOverlays(page: Page) {
         setTimeout(() => ring.remove(), 700);
       },
       // The outer edge of a box with a 3px border placed at `box`, as the page's own styles lay
-      // it out (whether their box-sizing puts the border outside or not): the edge HowBench draws
+      // it out (whether their box-sizing puts the border outside or not): the edge HowReel draws
       // a marking's border inside.
       outerBox(box) {
         const probe = document.createElement("div");

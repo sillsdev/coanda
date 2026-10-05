@@ -1,5 +1,5 @@
 // Settings for a video project that belong to this machine, not to the project's files:
-// which Bloom worktree its Claude session drives. Kept in ~/.howbench/projects.json, keyed by
+// the folder of the app its videos are about. Kept in ~/.howreel/projects.json, keyed by
 // the project folder's absolute path.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
@@ -14,7 +14,11 @@ export class ProjectSettingsStore {
   }
 
   get(projectDir: string): ProjectSettings {
-    return this.all()[key(projectDir)] ?? {};
+    // Settings saved when the app could only be Bloom name its folder `bloom`.
+    const { bloom, ...settings } = (this.all()[key(projectDir)] ?? {}) as ProjectSettings & {
+      bloom?: string;
+    };
+    return bloom && !settings.app ? { ...settings, app: bloom } : settings;
   }
 
   set(projectDir: string, settings: ProjectSettings): void {
@@ -36,22 +40,20 @@ export class ProjectSettingsStore {
 
 const key = (dir: string) => dir.replace(/\\/g, "/").toLowerCase();
 
-/** How to start a project's Claude session so it uses the project's Bloom worktree. */
-export function bloomLaunch(bloom: string): ProjectLaunch {
+/** How to start a project's Claude session so it works with the app in `app`. */
+export function appLaunch(app: string): ProjectLaunch {
   return {
-    args: ["--add-dir", bloom],
-    instructions: `This project's Bloom is the BloomDesktop worktree at ${bloom}. Run and drive
-Bloom only from there, with its run-bloom skill: read ${bloom}/.claude/skills/run-bloom/SKILL.md
-(and ${bloom}/AGENTS.md for building) before starting Bloom. Other worktrees may have their own
-Bloom running at the same time, so never assume port 8089 or any fixed port: take httpPort and
-cdpPort from \`node .claude/skills/run-bloom/launcherControl.mjs --status --json\` run in that
-worktree, and never stop a Bloom that another worktree started.
+    args: ["--add-dir", app],
+    instructions: `This project's videos are about the app in ${app}. Before building or running
+it, read that folder's AGENTS.md and CLAUDE.md, where they exist, and run and drive the app as
+they say. Other copies of the app may be running from other folders at the same time: never
+stop one you didn't start.
 
 ${
-  existsSync(join(bloom, ".git"))
-    ? `That worktree is a git checkout of Bloom's source, so the reviewer develops Bloom: its
+  existsSync(join(app, ".git"))
+    ? `That folder is a git checkout of the app's source, so the reviewer develops the app: its
 skills are yours to fix, as "Fix the tools you use" says. Sessions working in it are named
-after its folder ("${basename(bloom)}-…").`
+after its folder ("${basename(app)}-…").`
     : `That folder is not a git checkout, so its skills can't be fixed there: say a problem
 with them in a line instead.`
 }`,

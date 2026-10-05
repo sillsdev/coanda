@@ -91,7 +91,7 @@ export const api = {
     post<{ sent: number }>(
       project == null ? "/api/send" : `/api/send?project=${encodeURIComponent(project)}`,
     ),
-  /** Asks the project's session to record the video's missing voice, plan first. */
+  /** Asks the project's session to make the voiced video from this one, planning first. */
   voicePass: (project: string, video: string) =>
     post<AgentState>(`/api/agent/voice-pass?${p(project)}&${q(video)}`),
   projectForFolder: (folder: string) =>
@@ -135,9 +135,8 @@ export const api = {
     request<ProjectSettings>(`/api/project-settings?${p(project)}`),
   setProjectSettings: (project: string, change: { model?: string; effort?: string }) =>
     post<ProjectSettings>(`/api/project-settings?${p(project)}`, change),
-  /** Opens the OS folder chooser and sets the project's Bloom worktree. */
-  chooseBloom: (project: string) =>
-    post<{ bloom: string | null }>(`/api/project-bloom?${p(project)}`),
+  /** Opens the OS folder chooser and sets the folder of the project's app. */
+  chooseApp: (project: string) => post<{ app: string | null }>(`/api/project-app?${p(project)}`),
   claudeAuth: () => request<ClaudeAuth>("/api/claude-auth"),
   /** Shows a path in the reviewed folder, selected, in File Explorer. */
   reveal: (path: string) => post<{ path: string }>("/api/reveal", { path }),

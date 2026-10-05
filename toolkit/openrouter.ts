@@ -8,10 +8,10 @@ import { join } from "node:path";
 const BASE_URL = "https://openrouter.ai/api/v1";
 const CREDITS_PAGE = "https://openrouter.ai/settings/credits";
 
-/** The API key: from the environment, or the one saved in HowBench's settings. */
+/** The API key: from the environment, or the one saved in HowReel's settings. */
 export function openRouterKey(): string | undefined {
   if (process.env.OPENROUTER_API_KEY) return process.env.OPENROUTER_API_KEY;
-  const file = join(homedir(), ".howbench", "openrouter_key.txt");
+  const file = join(homedir(), ".howreel", "openrouter_key.txt");
   return existsSync(file) ? readFileSync(file, "utf8").trim() || undefined : undefined;
 }
 
@@ -19,7 +19,7 @@ function headers(key: string): Record<string, string> {
   return {
     Authorization: `Bearer ${key}`,
     "Content-Type": "application/json",
-    "X-Title": "HowBench",
+    "X-Title": "HowReel",
   };
 }
 

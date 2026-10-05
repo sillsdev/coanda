@@ -10,6 +10,7 @@ import type {
   TreeNode,
   VideoInfo,
 } from "../shared/types.ts";
+import { PROJECT_VIDEOS } from "../shared/types.ts";
 import {
   api,
   mediaUrl,
@@ -30,6 +31,7 @@ import { Splitter } from "./components/Splitter.tsx";
 import { VideoTree } from "./components/VideoTree.tsx";
 import { findNode, isDocument, isViewable, newestVideo, sumOwned } from "./format.ts";
 import { FileView } from "./components/FileView.tsx";
+import { Identity } from "./components/Identity.tsx";
 import "./App.css";
 
 function videoFromHash(): string | undefined {
@@ -38,9 +40,9 @@ function videoFromHash(): string | undefined {
 }
 
 const SIDEBARS = {
-  left: { key: "howbench.leftWidth", initial: 236, min: 160, max: 520 },
-  right: { key: "howbench.rightWidth", initial: 340, min: 260, max: 640 },
-  agent: { key: "howbench.agentWidth", initial: 380, min: 280, max: 760 },
+  left: { key: "howreel.leftWidth", initial: 236, min: 160, max: 520 },
+  right: { key: "howreel.rightWidth", initial: 340, min: 260, max: 640 },
+  agent: { key: "howreel.agentWidth", initial: 380, min: 280, max: 760 },
 };
 
 /** A sidebar width remembered in this browser, kept within its limits. */
@@ -79,7 +81,7 @@ function App() {
   const [videoInfo, setVideoInfo] = useState<VideoInfo | null>(null);
   const [showSubtitles, setShowSubtitles] = useState(() => {
     try {
-      return localStorage.getItem("howbench.subtitles") !== "off";
+      return localStorage.getItem("howreel.subtitles") !== "off";
     } catch {
       return true;
     }
@@ -93,7 +95,7 @@ function App() {
   const [selectedFolder, setSelectedFolder] = useState<string | undefined>(undefined);
   const [agent, setAgent] = useState<AgentState | null>(null);
   const [settings, setSettings] = useState<ProjectSettings>({});
-  const bloom = settings.bloom ?? null;
+  const app = settings.app ?? null;
   const [auth, setAuth] = useState<ClaudeAuth | null>(null);
   const [keys, setKeys] = useState<SavedKeys>({ elevenLabsKey: null, openRouterKey: null });
   const projectRef = useRef(project);
@@ -199,10 +201,13 @@ function App() {
   useEffect(() => {
     if (project == null) return;
     void loadAgent(project);
-    if (!auth) void api.claudeAuth().then(setAuth);
-  }, [project, loadAgent, auth]);
+  }, [project, loadAgent]);
 
-  // Until Claude Code is installed and logged in, keep asking: both happen outside HowBench.
+  useEffect(() => {
+    void api.claudeAuth().then(setAuth, () => {});
+  }, []);
+
+  // Until Claude Code is installed and logged in, keep asking: both happen outside HowReel.
   const loggedIn = auth?.loggedIn ?? true;
   useEffect(() => {
     if (loggedIn) return;
@@ -296,6 +301,9 @@ function App() {
   const newest = draftRequested ? newestVideo(projectNode?.children ?? []) : undefined;
   const draftVideo =
     newest && (newest.mtime ?? 0) >= Date.parse(draftRequested ?? "") ? newest : undefined;
+  // A project's draft video is approved like a planning document, and leads to the voiced one.
+  const isDraft = project != null && !!video && video.split("/").pop() === PROJECT_VIDEOS[0].file;
+  const hasVoiced = !!video && !!findNode(tree, video.replace(/[^/]+$/, PROJECT_VIDEOS[1].file));
   const questions = project == null ? [] : projectQuestions;
   // What Send sends: the open notes.
   const openTotal = sumOwned(projectNode?.children ?? tree, (n) => n.open ?? 0);
@@ -373,25 +381,31 @@ function App() {
   const openPath = (path: string) => void run(api.openPath(path, project));
 
   if (error && !info)
-    return <div className="fatal">Could not reach the HowBench server: {error}</div>;
+    return <div className="fatal">Could not reach the HowReel server: {error}</div>;
   if (!info) return null;
 
   return (
     <AvatarsContext.Provider value={info.avatars}>
       <div className="app">
-        <Header rootName={info.rootName} video={video} reviewers={reviewers}>
+        <Header reviewers={reviewers.filter((r) => r !== info.user)}>
+          <Identity
+            name={info.user}
+            email={info.email}
+            auth={auth}
+            onLogin={() => void run(api.claudeLogin())}
+          />
           <Settings
             saved={keys}
             onSaveKey={async (which, key) => setKeys(await api.saveKey(which, key))}
-            bloom={
+            app={
               project != null
                 ? {
-                    path: bloom,
+                    path: app,
                     onChoose: () =>
                       void run(
                         api
-                          .chooseBloom(project)
-                          .then((r) => setSettings((s) => ({ ...s, bloom: r.bloom ?? undefined }))),
+                          .chooseApp(project)
+                          .then((r) => setSettings((s) => ({ ...s, app: r.app ?? undefined }))),
                       ),
                   }
                 : undefined
@@ -510,9 +524,16 @@ function App() {
               ref={playerRef}
               renderedAt={renderedAt}
               unvoiced={videoInfo?.unvoiced ?? []}
-              onVoicePass={
-                project != null
-                  ? () => void run(api.voicePass(project, video).then(setAgent))
+              approved={videoInfo?.approved}
+              onApprove={
+                isDraft
+                  ? (approved) =>
+                      void run(api.approve(video, approved).then(() => loadVideoInfo(video)))
+                  : undefined
+              }
+              onMakeVoiced={
+                isDraft && !hasVoiced
+                  ? () => void run(api.voicePass(project!, video).then(setAgent))
                   : undefined
               }
               subtitles={(videoInfo?.subtitles ?? []).map(subtitleUrl)}
@@ -521,7 +542,7 @@ function App() {
                 const next = !showSubtitles;
                 setShowSubtitles(next);
                 try {
-                  localStorage.setItem("howbench.subtitles", next ? "on" : "off");
+                  localStorage.setItem("howreel.subtitles", next ? "on" : "off");
                 } catch {
                   // Storage unavailable: the switch still works for this page.
                 }

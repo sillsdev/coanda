@@ -90,7 +90,7 @@ export interface AnnotationFile {
 
 /**
  * A render's timeline, written by the pipeline beside the video as `<name>.timeline.json`: the
- * named moments in it (narration lines, actions) and when they happen. HowBench lines up the
+ * named moments in it (narration lines, actions) and when they happen. HowReel lines up the
  * reviewed render's timeline with the new one to move annotations after a re-cut. An anchor
  * with `say` is a narration line, and `say` is its words.
  */
@@ -188,6 +188,8 @@ export interface VideoInfo {
   unvoiced: UnvoicedLine[];
   /** Subtitle files beside the video (`<name>.srt`, `<name>.en.vtt`, …), relative paths. */
   subtitles: string[];
+  /** The reviewer approved the video, unchanged since. */
+  approved: boolean;
 }
 
 export interface TreeNode {
@@ -216,7 +218,7 @@ export interface TreeNode {
 }
 
 /**
- * idle: no turn has run since HowBench started. working: Claude is on a turn.
+ * idle: no turn has run since HowReel started. working: Claude is on a turn.
  * done: Claude finished its turn. question: Claude finished and needs the reviewer.
  * error: the turn failed or Claude Code stopped.
  */
@@ -264,8 +266,8 @@ export interface UsageLimits {
 
 /** A project's per-machine settings. */
 export interface ProjectSettings {
-  /** The BloomDesktop worktree the project's session runs Bloom from. */
-  bloom?: string;
+  /** The folder of the app the project's videos are about, which its session runs the app from. */
+  app?: string;
   /** Model alias or name for `claude --model`; absent for Claude Code's default. */
   model?: string;
   /** `claude --effort` level; absent for the default. */
@@ -277,6 +279,10 @@ export interface ClaudeAuth {
   installed: boolean;
   loggedIn: boolean;
   email?: string;
+  /** The organization the login belongs to, from `claude auth status`. */
+  orgName?: string;
+  /** The plan, such as "pro" or "enterprise". */
+  subscriptionType?: string;
 }
 
 export interface ServerInfo {
@@ -284,13 +290,15 @@ export interface ServerInfo {
   root: string | null;
   rootName: string;
   user: string;
+  /** git's user.email, when the reviewer's name comes from git rather than `--user`. */
+  email?: string;
   /** Picture URLs by person's name. */
   avatars: Record<string, string>;
   /** Folders reviewed recently, most recent first. */
   recent: string[];
 }
 
-/** What `howbench wait` prints: one entry per annotation sent to Claude. */
+/** What `howreel wait` prints: one entry per annotation sent to Claude. */
 export interface SentAnnotation extends Annotation {
   video: string;
   /** Absolute path of the video file. */
@@ -367,8 +375,8 @@ export interface DocText {
 }
 
 export interface ServerStatus {
-  /** True while a `howbench wait` is connected. */
+  /** True while a `howreel wait` is connected. */
   waiting: boolean;
-  /** Sent annotations that no `howbench wait` has collected yet. */
+  /** Sent annotations that no `howreel wait` has collected yet. */
   undelivered: number;
 }

@@ -33,7 +33,7 @@ Hatton asked for it; don't take it as licence for others.
 
 # Messages from video agents
 
-The Claude sessions HowBench runs for video projects send problems they find in HowBench (its
+The Claude sessions HowReel runs for video projects send problems they find in HowReel (its
 commands, the recorder, `agent/guidance.md`) to a session working here, by SendMessage. Fix
 each one when it arrives, as you would a request from Hatton, and tell Hatton what came in and
 what you changed.

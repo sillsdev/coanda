@@ -66,7 +66,7 @@ const fakeHelper = (dir: string, body: string) => {
 };
 
 test("speakKokoro sends the lines and reads back one result per line", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "howbench-kokoro-"));
+  const dir = mkdtempSync(join(tmpdir(), "howreel-kokoro-"));
   const command = fakeHelper(
     dir,
     `import { readFileSync, writeFileSync } from "node:fs";
@@ -98,7 +98,7 @@ for (const l of req.lines) {
 });
 
 test("speakKokoro passes on the helper's install instructions when Kokoro is missing", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "howbench-kokoro-"));
+  const dir = mkdtempSync(join(tmpdir(), "howreel-kokoro-"));
   const command = fakeHelper(
     dir,
     `process.stdin.resume(); process.stdin.on("end", () => { console.error("Kokoro isn't installed. Install it: pip install kokoro"); process.exit(3); });`,
@@ -113,7 +113,7 @@ const python = process.platform === "win32" ? "py" : "python3";
 const hasPython = spawnSync(python, ["--version"]).status === 0;
 
 const runHelper = (stubs: Record<string, string>, request: unknown) => {
-  const dir = mkdtempSync(join(tmpdir(), "howbench-kokoro-py-"));
+  const dir = mkdtempSync(join(tmpdir(), "howreel-kokoro-py-"));
   for (const [name, code] of Object.entries(stubs)) {
     mkdirSync(join(dir, name));
     writeFileSync(join(dir, name, "__init__.py"), code);
@@ -145,7 +145,7 @@ class KPipeline:
 `;
 
 test.skipIf(!hasPython)("the helper writes a WAV and word timings for each line", () => {
-  const out = join(mkdtempSync(join(tmpdir(), "howbench-kokoro-out-")), "line.wav");
+  const out = join(mkdtempSync(join(tmpdir(), "howreel-kokoro-out-")), "line.wav");
   const r = runHelper(
     { torch: TORCH, kokoro: KOKORO },
     { voice: "af_heart", lines: [{ spoken: "One two. Three.", seed: 5, out }] },

@@ -32,3 +32,9 @@ playwright-report
 
 # Git Bash crash dumps
 *.stackdump
+
+# Video projects: what a run produces (local/), and HowReel's working files for a project
+# (.howreel/) and for a video's notes (<video>.howreel/)
+**/local/
+.howreel/
+*.howreel/

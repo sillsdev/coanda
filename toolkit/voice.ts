@@ -1,8 +1,8 @@
 // The narration track of a video, made from the silent picture and its timeline, whose anchors
 // with `say` are the narration lines.
 //
-// `howbench subtitles` (mode "silent") makes the draft: no audio, each line shown as a subtitle
-// for as long as it should take to say. `howbench voice` (modes "plan" and "pass") is the voice
+// `howreel subtitles` (mode "silent") makes the draft: no audio, each line shown as a subtitle
+// for as long as it should take to say. `howreel voice` (modes "plan" and "pass") is the voice
 // pass the reviewer asks for at the end: "plan" says what it would record and cost, "pass"
 // records each line, keeping any recording already made of the same words. Where a line runs
 // into the next one, the picture freezes for the difference.
@@ -191,7 +191,7 @@ export async function voice(opts: {
     let rec = found[i];
     if (!rec && opts.mode === "pass" && provider === "elevenlabs") {
       const apiKey = elevenLabsKey();
-      if (!apiKey) throw new Error("No ElevenLabs key: set one in HowBench's settings");
+      if (!apiKey) throw new Error("No ElevenLabs key: set one in HowReel's settings");
       if (!settings.voiceId || !settings.model) {
         throw new Error(`Set voice.voiceId and voice.model in ${PROJECT_FILE}`);
       }
@@ -263,7 +263,7 @@ export async function voice(opts: {
     seconds: plan.seconds,
   };
   writeFileSync(outTimeline, JSON.stringify(shiftTimeline(timeline, plan.shift), null, 1));
-  // The translations go before the report, which HowBench takes as the sign that the video is done.
+  // The translations go before the report, which HowReel takes as the sign that the video is done.
   const translated = Object.entries(settings.translations ?? {}).flatMap(([code, file]) => {
     const srtOut = join(o.dir, `${o.name}.${code}.srt`);
     try {
@@ -324,7 +324,7 @@ async function recordWithKokoro(
   cacheDir: string,
   onRecorded: (text: string) => void,
 ): Promise<Recording[]> {
-  const work = mkdtempSync(join(tmpdir(), "howbench-kokoro-"));
+  const work = mkdtempSync(join(tmpdir(), "howreel-kokoro-"));
   const recorded: Recording[] = [];
   try {
     const spoken = texts.map((t) => kokoroSpoken(t, settings.markup));

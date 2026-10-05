@@ -4,11 +4,11 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { Alignment } from "./voiceCache.ts";
 
-/** The API key: from the environment, or the one saved in HowBench's settings. */
+/** The API key: from the environment, or the one saved in HowReel's settings. */
 export function elevenLabsKey(): string | undefined {
   const fromEnv = process.env.ELEVENLABS_API_KEY || process.env.ELEVENLABS_KEY;
   if (fromEnv) return fromEnv;
-  const file = join(homedir(), ".howbench", "elevenlabs_key.txt");
+  const file = join(homedir(), ".howreel", "elevenlabs_key.txt");
   return existsSync(file) ? readFileSync(file, "utf8").trim() || undefined : undefined;
 }
 
