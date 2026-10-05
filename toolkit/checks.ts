@@ -266,6 +266,25 @@ export function boxesOffFrame(
     }));
 }
 
+/** Fades that end before what they fade in is drawn: a big change inside the faded region in
+ * the second after the fade, which shows as the content popping in after all. */
+export function dissolvePops(video: string, markings: Marking[]): Finding[] {
+  return markings
+    .filter((m) => m.kind === "dissolve")
+    .flatMap((m) => {
+      const pop = frameDifferences(video, m.to, 1, m).find((f) => f.diff > REACTION);
+      return pop
+        ? [
+            {
+              check: "dissolve-pop",
+              t: pop.t,
+              message: `${m.key} ends at ${m.to.toFixed(2)} s, but its region changes again at ${pop.t.toFixed(2)} s: what it fades in pops in after it`,
+            },
+          ]
+        : [];
+    });
+}
+
 /** A frame difference above this is the app reacting; a ripple or a pointer moving is well
  * below it. */
 const REACTION = 2.5;
@@ -464,6 +483,7 @@ export function runChecks(opts: {
     ...boxesLeaveTogether(markings),
     ...boxesCross(markings),
     ...boxesOffFrame(markings, imageSize(video)),
+    ...dissolvePops(video, timeline.markings ?? []),
   ];
   if (clicks.length) {
     findings.push(...checkClickReactions(clickReactions(video, clicks), opts.minReaction));

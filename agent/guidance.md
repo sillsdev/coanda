@@ -273,7 +273,9 @@ no frame may show. It returns `r`, with:
   every box and arrow down together. They're logged as markings, not drawn.
 - `r.dissolve(() => action, { region })` wraps an action that makes text or a picture appear
   all at once, such as a paste, so it fades in instead of popping. Keep the pointer out of the
-  region.
+  region. The fade lasts until the region has stopped changing on screen (up to 3 s), since an
+  app can report new content before it has drawn it; `coanda check` flags a fade whose content
+  pops in after it ends.
 
 The recorder paces actions the way the rules above ask. A pointer move with no duration takes
 400 ms plus 0.7 ms per pixel, at most 1.1 s, so leave out `ms` unless a move needs to differ.
@@ -288,7 +290,9 @@ the cards, writing the picture and its timeline, ready for `coanda subtitles`. I
 box up at least 2 s and makes boxes shown together leave together. With `--trim-idle` it
 shortens stretches longer than 2 s where the picture is still and nothing is said, logged,
 marked, moved, pressed or typed, down to 1 s, and moves every time in the timeline with them.
-`coanda gaps <file.srt>` lists the longest silences between lines. When something general
+A recording never waits without limit on the app: give every wait for it to start, answer or
+shut down a time limit, and when it won't close, close it by force rather than let the
+recording hang. `coanda gaps <file.srt>` lists the longest silences between lines. When something general
 about recording is missing or wrong, it belongs in Coanda's recorder: see "Fix the tools you
 use".
 

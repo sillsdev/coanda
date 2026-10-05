@@ -367,6 +367,9 @@ export async function startRecorder(opts: RecorderOptions) {
       const area = isBox(region) ? region : await union([region]);
       const from = stamp();
       await action();
+      // An app can report new content before it's painted, so the fade lasts until the region
+      // has stopped changing; otherwise it ends on an empty space and the content pops in.
+      await stillIn(area);
       const to = Math.max(from + (opts.seconds ?? 0.8), stamp());
       markings.push({
         key: `dissolve: ${opts.key ?? from.toFixed(2)}`,
@@ -475,6 +478,19 @@ export async function startRecorder(opts: RecorderOptions) {
     for (const key of ending) {
       markings.push({ ...openBoxes.get(key)!, to });
       openBoxes.delete(key);
+    }
+  };
+  /** Waits until `area` looks the same in three captures in a row, 0.1 s apart, or 3 s. */
+  const stillIn = async (area: Box) => {
+    const clip = { ...area, scale: 0.25 };
+    const end = Date.now() + 3000;
+    let last = "";
+    let same = 0;
+    while (same < 2 && Date.now() < end) {
+      await page.waitForTimeout(100);
+      const { data } = await cdp.send("Page.captureScreenshot", { format: "png", clip });
+      same = data === last ? same + 1 : 0;
+      last = data;
     }
   };
 
