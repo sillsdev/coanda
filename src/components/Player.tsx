@@ -582,7 +582,7 @@ function Arrow({
         y1={y1}
         x2={ex}
         y2={ey}
-        stroke="#0a1222"
+        stroke="#1a1918"
         strokeOpacity={0.55}
         strokeWidth={6}
         strokeLinecap="round"
@@ -597,7 +597,7 @@ function Arrow({
         strokeLinecap="round"
         strokeDasharray={dashed ? "7 5" : undefined}
       />
-      <polygon points={head} fill="#4a7fe0" stroke="#0a1222" strokeOpacity={0.4} strokeWidth={1} />
+      <polygon points={head} fill="#4a7fe0" stroke="#1a1918" strokeOpacity={0.4} strokeWidth={1} />
     </g>
   );
 }

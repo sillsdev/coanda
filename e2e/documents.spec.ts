@@ -57,14 +57,14 @@ async function selectWords(page: Page, words: string) {
 /** How many passages are marked as commented, and as the selected comment's. */
 const highlighted = (page: Page) =>
   page.evaluate(() => ({
-    other: CSS.highlights.get("coanda-comment")?.size ?? 0,
-    active: CSS.highlights.get("coanda-comment-active")?.size ?? 0,
+    other: CSS.highlights.get("howbench-comment")?.size ?? 0,
+    active: CSS.highlights.get("howbench-comment-active")?.size ?? 0,
   }));
 
 test("write a brief, paste screenshots into it, comment on it, and answer Claude", async ({
   page,
 }) => {
-  const scratch = mkdtempSync(join(tmpdir(), "coanda-docs-"));
+  const scratch = mkdtempSync(join(tmpdir(), "howbench-docs-"));
   const root = join(scratch, "videos");
   cpSync(join(repo, "samples"), root, { recursive: true });
   const project = join(root, "getting-started");
@@ -201,7 +201,7 @@ test("write a brief, paste screenshots into it, comment on it, and answer Claude
 test("plan a video: start the brief from the project page, approve it, and go on", async ({
   page,
 }) => {
-  const scratch = mkdtempSync(join(tmpdir(), "coanda-plan-"));
+  const scratch = mkdtempSync(join(tmpdir(), "howbench-plan-"));
   const root = join(scratch, "videos");
   cpSync(join(repo, "samples"), root, { recursive: true });
   const project = join(root, "getting-started");
@@ -255,7 +255,7 @@ test("plan a video: start the brief from the project page, approve it, and go on
       page.getByTestId("step-outline").getByRole("button", { name: "Start" }),
     ).toBeDisabled();
 
-    // Starting the brief makes it from Coanda's template, opens it, and has Claude begin.
+    // Starting the brief makes it from Howbench's template, opens it, and has Claude begin.
     await page.getByTestId("step-brief").getByRole("button", { name: "Start" }).click();
     await expect(page.getByTestId("doc-page").locator(".md-h2").first()).toHaveText("Audience");
     expect(readFileSync(join(project, "brief.md"), "utf8")).toContain("## Learning objectives");
@@ -320,7 +320,7 @@ test("plan a video: start the brief from the project page, approve it, and go on
 test("Claude's questions show in the chat, and each answer goes to Claude at once", async ({
   page,
 }) => {
-  const scratch = mkdtempSync(join(tmpdir(), "coanda-ask-"));
+  const scratch = mkdtempSync(join(tmpdir(), "howbench-ask-"));
   const root = join(scratch, "videos");
   cpSync(join(repo, "samples"), root, { recursive: true });
   writeFileSync(join(root, "getting-started", "video-project.json"), "{}\n");
@@ -359,7 +359,7 @@ test("Claude's questions show in the chat, and each answer goes to Claude at onc
     // An answer goes to Claude straight away. The card then shows the question and the answer,
     // with nothing left to click or type.
     await first.getByRole("button", { name: "Yes" }).click();
-    await expect(first.locator(".chat-human")).toHaveText("Yes");
+    await expect(first.locator(".question-answer-text")).toHaveText("Yes");
     await expect(first.getByRole("button")).toHaveCount(0);
     await expect(first.getByRole("textbox")).toHaveCount(0);
     await expect
@@ -373,7 +373,7 @@ test("Claude's questions show in the chat, and each answer goes to Claude at onc
     await page.screenshot({ path: join(shots, "24-question-answered.png") });
     await second.getByPlaceholder("Answer…").fill("Spanish");
     await second.getByPlaceholder("Answer…").press("Enter");
-    await expect(second.locator(".chat-human")).toHaveText("Spanish");
+    await expect(second.locator(".question-answer-text")).toHaveText("Spanish");
     await expect(second.getByRole("button")).toHaveCount(0);
     await expect(second.getByRole("textbox")).toHaveCount(0);
     await expect.poll(lastMessage).toContain(": Spanish");

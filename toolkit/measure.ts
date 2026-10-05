@@ -61,7 +61,7 @@ export function contactSheet(opts: {
   mkdirSync(dirname(out), { recursive: true });
   // drawtext can't take a path with a drive letter's colon, so it runs in a folder holding a
   // copy of the font and the labels.
-  const work = mkdtempSync(join(tmpdir(), "coanda-sheet-"));
+  const work = mkdtempSync(join(tmpdir(), "howbench-sheet-"));
   try {
     const font = findFont();
     if (font) copyFileSync(font, join(work, "font.ttf"));
@@ -122,7 +122,7 @@ export function contactSheet(opts: {
   }
 }
 
-/** Frames per second the picture is measured at. Coanda's pictures are 30 fps. */
+/** Frames per second the picture is measured at. Howbench's pictures are 30 fps. */
 export const FPS = 30;
 /** The picture is shrunk to this size before frames are compared. */
 const SMALL = { width: 96, height: 54 };

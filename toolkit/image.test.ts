@@ -48,7 +48,7 @@ function png(file: string, width: number, height: number) {
 }
 
 test("an edit goes to the images API, with the image to edit first and named in the prompt", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "coanda-image-"));
+  const dir = mkdtempSync(join(tmpdir(), "howbench-image-"));
   process.env.OPENROUTER_API_KEY = "test-key";
   const cover = png(join(dir, "cover.png"), 3000, 1500);
   const butterfly = png(join(dir, "butterfly.png"), 1600, 1600);
@@ -84,7 +84,7 @@ test("an edit goes to the images API, with the image to edit first and named in 
 });
 
 test("a size is snapped to what the model accepts, and sent without an aspect ratio", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "coanda-image-"));
+  const dir = mkdtempSync(join(tmpdir(), "howbench-image-"));
   process.env.OPENROUTER_API_KEY = "test-key";
   const requests = fakeOpenRouter(Buffer.from("x"));
   const made = await image({ out: join(dir, "a.png"), prompt: "Monarchs", size: "1500x1001" });
@@ -94,7 +94,7 @@ test("a size is snapped to what the model accepts, and sent without an aspect ra
 });
 
 test("a response with no image is asked for again", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "coanda-image-"));
+  const dir = mkdtempSync(join(tmpdir(), "howbench-image-"));
   process.env.OPENROUTER_API_KEY = "test-key";
   const requests = fakeOpenRouter(Buffer.from("x"), 2);
   await image({ out: join(dir, "a.png"), prompt: "Monarchs", aspect: "16:9" });
@@ -103,7 +103,7 @@ test("a response with no image is asked for again", async () => {
 });
 
 test("an estimate costs nothing and calls nothing", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "coanda-image-"));
+  const dir = mkdtempSync(join(tmpdir(), "howbench-image-"));
   const requests = fakeOpenRouter(Buffer.from("x"));
   const made = await image({ out: join(dir, "a.png"), prompt: "Monarchs", estimate: true });
   expect(requests).toHaveLength(0);
@@ -113,7 +113,7 @@ test("an estimate costs nothing and calls nothing", async () => {
 });
 
 test("the project's recipe can choose another model", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "coanda-image-"));
+  const dir = mkdtempSync(join(tmpdir(), "howbench-image-"));
   process.env.OPENROUTER_API_KEY = "test-key";
   writeFileSync(
     join(dir, "video-project.json"),

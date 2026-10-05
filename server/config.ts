@@ -12,7 +12,7 @@ export interface Config {
 const MAX_RECENT = 8;
 
 export function defaultConfigFile(): string {
-  return process.env.COANDA_CONFIG ?? join(homedir(), ".coanda", "config.json");
+  return process.env.HOWBENCH_CONFIG ?? join(homedir(), ".howbench", "config.json");
 }
 
 export function loadConfig(file: string): Config {

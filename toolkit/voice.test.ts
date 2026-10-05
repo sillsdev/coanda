@@ -78,7 +78,7 @@ test("recordings match by words, ignoring final punctuation and spacing", () => 
 });
 
 test("the cache finds recordings in this voice, or from an older cache with no voice", () => {
-  const dir = mkdtempSync(join(tmpdir(), "coanda-voice-"));
+  const dir = mkdtempSync(join(tmpdir(), "howbench-voice-"));
   // An older cache entry: only the timings.
   writeFileSync(join(dir, "old.mp3"), "");
   writeFileSync(join(dir, "old.json"), JSON.stringify(alignment("Basic Book.", 1.2)));
@@ -131,7 +131,7 @@ test("the provider is ElevenLabs unless the recipe says Kokoro", () => {
 });
 
 test("a recording in one provider's voice isn't used for another's", () => {
-  const dir = mkdtempSync(join(tmpdir(), "coanda-voice-"));
+  const dir = mkdtempSync(join(tmpdir(), "howbench-voice-"));
   writeFileSync(join(dir, "old.mp3"), "");
   writeFileSync(join(dir, "old.json"), JSON.stringify(alignment("Old line.", 1)));
   const kokoro = { provider: "kokoro" as const, voiceId: "af_heart" };
@@ -161,7 +161,7 @@ test("a recording in one provider's voice isn't used for another's", () => {
 });
 
 test("a voice pass with Kokoro costs nothing", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "coanda-voice-"));
+  const dir = mkdtempSync(join(tmpdir(), "howbench-voice-"));
   writeFileSync(
     join(dir, "video-project.json"),
     JSON.stringify({ voice: { provider: "kokoro", voiceId: "af_heart", cache: "cache" } }),

@@ -16,9 +16,6 @@ interface Props {
   onAnswer: (q: AgentQuestion, text: string) => void;
   onDeleteQuestion: (q: AgentQuestion) => void;
   onMakeProject: () => void;
-  /** The project's Bloom worktree; null when none is chosen. */
-  bloom: string | null;
-  onChooseBloom: () => void;
   model: string;
   effort: string;
   onModel: (model: string) => void;
@@ -52,9 +49,7 @@ export function AgentPanel(props: Props) {
   if (project === undefined) {
     return (
       <section className="panel agent-panel" data-testid="agent-panel">
-        <div className="panel-head">
-          <div className="panel-title">Claude</div>
-        </div>
+        <div className="panel-head" />
       </section>
     );
   }
@@ -62,9 +57,7 @@ export function AgentPanel(props: Props) {
   if (project === null) {
     return (
       <section className="panel agent-panel" data-testid="agent-panel">
-        <div className="panel-head">
-          <div className="panel-title">Claude</div>
-        </div>
+        <div className="panel-head" />
         <div className="agent-none">
           <button className="btn btn-primary" onClick={props.onMakeProject}>
             Make project here
@@ -86,27 +79,9 @@ export function AgentPanel(props: Props) {
   return (
     <section className="panel agent-panel" data-testid="agent-panel">
       <div className="panel-head">
-        <div className="panel-title">Claude</div>
-        <span className="agent-project mono" title={project || "/"}>
+        <div className="panel-title agent-project" title={project || "/"}>
           {project.split("/").pop() || "/"}
-        </span>
-      </div>
-      <div className="agent-bloom">
-        <span className="eyebrow">Bloom</span>
-        {props.bloom ? (
-          <>
-            <span className="agent-bloom-path mono" title={props.bloom}>
-              {props.bloom}
-            </span>
-            <button className="link-btn small-btn" onClick={props.onChooseBloom}>
-              Change…
-            </button>
-          </>
-        ) : (
-          <button className="link-btn small-btn" onClick={props.onChooseBloom}>
-            Choose…
-          </button>
-        )}
+        </div>
       </div>
       {auth && !auth.loggedIn ? (
         <div className="agent-login">

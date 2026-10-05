@@ -35,6 +35,16 @@ export function findNode(nodes: TreeNode[], path: string): TreeNode | undefined 
   return undefined;
 }
 
+/** The most recently changed video among the nodes and everything under them. */
+export function newestVideo(nodes: TreeNode[]): TreeNode | undefined {
+  let newest: TreeNode | undefined;
+  for (const n of nodes) {
+    const candidate = n.kind === "video" ? n : n.children && newestVideo(n.children);
+    if (candidate && (candidate.mtime ?? 0) > (newest?.mtime ?? 0)) newest = candidate;
+  }
+  return newest;
+}
+
 /** "claude-opus-5-5" → "Opus 5.5"; "claude-haiku-4-5-20251001" → "Haiku 4.5". Anything else,
  * such as an alias, is shown as it is. */
 export function modelName(id: string): string {
@@ -43,9 +53,18 @@ export function modelName(id: string): string {
   return `${m[1][0].toUpperCase()}${m[1].slice(1)} ${m[2]}.${m[3]}`;
 }
 
-/** Files Coanda opens as documents, as the server decides. */
+/** Files Howbench opens as documents, as the server decides. */
 export function isDocument(path: string): boolean {
   return path.toLowerCase().endsWith(".md");
+}
+
+export function isImage(path: string): boolean {
+  return /\.(png|jpe?g|gif|webp|svg)$/i.test(path);
+}
+
+/** Files Howbench shows as they are, without notes: images and JSON. */
+export function isViewable(path: string): boolean {
+  return isImage(path) || path.toLowerCase().endsWith(".json");
 }
 
 /**

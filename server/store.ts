@@ -26,11 +26,18 @@ import type {
   TreeNode,
   UnvoicedLine,
 } from "../shared/types.ts";
-import { PLANNING_STEPS } from "../shared/types.ts";
+import { PLANNING_STEPS, PROJECT_VIDEOS } from "../shared/types.ts";
 
 export const VIDEO_EXTENSIONS = [".mp4", ".webm", ".mov", ".m4v", ".ogv"];
 
-/** Files Coanda opens as documents, to read, edit and comment on. */
+/** Files Howbench opens as documents, to read, edit and comment on. */
+/** A project's draft or voiced video, anywhere in the project, numbered after the planning
+ * documents. */
+function videoStep(name: string): { step: number } | Record<string, never> {
+  const i = PROJECT_VIDEOS.findIndex((v) => v.file === name);
+  return i >= 0 ? { step: PLANNING_STEPS.length + i + 1 } : {};
+}
+
 export function isDocument(name: string): boolean {
   return name.toLowerCase().endsWith(".md");
 }
@@ -65,15 +72,15 @@ export class Store {
   }
 
   annotationFilePath(video: string): string {
-    return this.resolvePath(video) + ".coanda.json";
+    return this.resolvePath(video) + ".howbench.json";
   }
 
   frameDir(video: string): string {
-    return this.resolvePath(video) + ".coanda";
+    return this.resolvePath(video) + ".howbench";
   }
 
   /**
-   * A file and Coanda's own files beside it: its annotations and saved frames. For a video, also
+   * A file and Howbench's own files beside it: its annotations and saved frames. For a video, also
    * the render's files named after it (subtitles, timeline, voice report), unless another video
    * beside it has the same name and so shares them.
    */
@@ -97,7 +104,7 @@ export class Store {
     return files.filter((f) => existsSync(f));
   }
 
-  /** Renames a file, and Coanda's files beside it, within its folder. Returns its new path. */
+  /** Renames a file, and Howbench's files beside it, within its folder. Returns its new path. */
   rename(path: string, name: string): string {
     name = name.trim();
     if (!name || /[\\/:*?"<>|]/.test(name) || name === "." || name === "..") {
@@ -117,7 +124,7 @@ export class Store {
     // Annotations name their saved files by path, through the renamed file's frame folder or
     // through the renamed folder.
     const isFolder = statSync(this.resolvePath(next)).isDirectory();
-    const [oldRel, newRel] = isFolder ? [path, next] : [`${path}.coanda`, `${next}.coanda`];
+    const [oldRel, newRel] = isFolder ? [path, next] : [`${path}.howbench`, `${next}.howbench`];
     const [oldFull, newFull] = [this.resolvePath(oldRel), this.resolvePath(newRel)];
     const move = (p: string) => {
       if (p.startsWith(oldRel + "/")) return newRel + p.slice(oldRel.length);
@@ -149,9 +156,9 @@ export class Store {
       for (const entry of readdirSync(dir, { withFileTypes: true })) {
         const full = join(dir, entry.name);
         if (entry.isDirectory()) {
-          if (!entry.name.endsWith(".coanda")) walk(full);
-        } else if (entry.name.endsWith(".coanda.json")) {
-          out.push(this.toRelative(full.slice(0, -".coanda.json".length)));
+          if (!entry.name.endsWith(".howbench")) walk(full);
+        } else if (entry.name.endsWith(".howbench.json")) {
+          out.push(this.toRelative(full.slice(0, -".howbench.json".length)));
         }
       }
     };
@@ -238,16 +245,16 @@ export class Store {
     return `images/${name}`;
   }
 
-  /** Saves an image pasted into a project's chat, in the project's `.coanda/chat` folder. */
+  /** Saves an image pasted into a project's chat, in the project's `.howbench/chat` folder. */
   saveChatImage(project: string, image: Buffer, ext: string): string {
-    const dir = join(this.resolvePath(project), ".coanda", "chat");
+    const dir = join(this.resolvePath(project), ".howbench", "chat");
     mkdirSync(dir, { recursive: true });
     const file = join(dir, `pasted-${stampName()}.${ext}`);
     writeFileSync(file, image);
     return this.toRelative(file);
   }
 
-  /** Deletes a file Coanda saved beside a video, such as a frame or a pasted image. */
+  /** Deletes a file Howbench saved beside a video, such as a frame or a pasted image. */
   removeSaved(video: string, rel: string): void {
     const full = this.resolvePath(rel);
     if (dirname(full) !== this.frameDir(video)) return;
@@ -258,15 +265,17 @@ export class Store {
     return this.scan(this.root);
   }
 
-  private scan(dir: string): TreeNode[] {
+  /** `inProject`: the folder is inside a project, below the project's own folder. */
+  private scan(dir: string, inProject = false): TreeNode[] {
+    const isProject = existsSync(join(dir, PROJECT_FILE));
     const folders: TreeNode[] = [];
     const files: TreeNode[] = [];
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
       const full = join(dir, entry.name);
       if (entry.isDirectory()) {
-        if (entry.name.endsWith(".coanda")) continue;
-        const children = this.scan(full);
+        if (entry.name.endsWith(".howbench")) continue;
+        const children = this.scan(full, inProject || isProject);
         folders.push({
           name: entry.name,
           path: this.toRelative(full),
@@ -286,8 +295,9 @@ export class Store {
           open: count((a) => a.status === "open"),
           sent: count((a) => a.status === "sent"),
           mtime: statSync(full).mtimeMs,
+          ...(inProject ? videoStep(entry.name) : {}),
         });
-      } else if (!entry.name.endsWith(".coanda.json")) {
+      } else if (!entry.name.endsWith(".howbench.json")) {
         let mtime: number | undefined;
         try {
           mtime = statSync(full).mtimeMs;
@@ -296,7 +306,7 @@ export class Store {
         }
         const path = this.toRelative(full);
         const node: TreeNode = { name: entry.name, path, kind: "file", mtime };
-        if (isDocument(entry.name) && existsSync(full + ".coanda.json")) {
+        if (isDocument(entry.name) && existsSync(full + ".howbench.json")) {
           const { annotations, approved } = this.read(path);
           if (approved && mtime !== undefined && Math.abs(mtime - approved.mtime) <= 1) {
             node.approved = true;
@@ -309,11 +319,12 @@ export class Store {
       }
     }
     const byName = (a: TreeNode, b: TreeNode) => a.name.localeCompare(b.name);
-    // In a project, its planning documents come first, in the order they're written.
-    if (existsSync(join(dir, PROJECT_FILE))) {
+    // In a project, its planning documents and then its videos come first, in the order
+    // they're made.
+    if (isProject) {
       const planned: TreeNode[] = [];
-      PLANNING_STEPS.forEach((step, i) => {
-        const at = files.findIndex((f) => f.kind === "file" && f.name === step.file);
+      [...PLANNING_STEPS, ...PROJECT_VIDEOS].forEach((step, i) => {
+        const at = files.findIndex((f) => f.name === step.file);
         if (at >= 0) planned.push({ ...files.splice(at, 1)[0], step: i + 1 });
       });
       return [...planned, ...folders.sort(byName), ...files.sort(byName)];
@@ -362,7 +373,7 @@ export class Store {
     });
   }
 
-  /** Starts a planning document from Coanda's template, unless it's already there. */
+  /** Starts a planning document from Howbench's template, unless it's already there. */
   startPlanningStep(project: string, key: string, template: string): string {
     const step = PLANNING_STEPS.find((s) => s.key === key);
     if (!step) throw new Error(`No planning step "${key}"`);
@@ -378,7 +389,7 @@ export class Store {
   /** When the reviewer asked for the project's draft video, or null. */
   draftRequested(project: string): string | null {
     try {
-      const file = join(this.resolvePath(project), ".coanda", "planning.json");
+      const file = join(this.resolvePath(project), ".howbench", "planning.json");
       return (
         (JSON.parse(readFileSync(file, "utf8")) as { draftRequestedAt?: string })
           .draftRequestedAt ?? null
@@ -389,7 +400,7 @@ export class Store {
   }
 
   requestDraft(project: string): void {
-    const dir = join(this.resolvePath(project), ".coanda");
+    const dir = join(this.resolvePath(project), ".howbench");
     mkdirSync(dir, { recursive: true });
     writeFileSync(
       join(dir, "planning.json"),
@@ -406,7 +417,7 @@ export class Store {
     });
   }
 
-  /** Claude's questions to the reviewer in a project, kept in its `.coanda` folder. */
+  /** Claude's questions to the reviewer in a project, kept in its `.howbench` folder. */
   questions(project: string): AgentQuestion[] {
     try {
       return JSON.parse(readFileSync(this.questionsFile(project), "utf8")) as AgentQuestion[];
@@ -424,7 +435,7 @@ export class Store {
   }
 
   private questionsFile(project: string): string {
-    return join(this.resolvePath(project), ".coanda", "questions.json");
+    return join(this.resolvePath(project), ".howbench", "questions.json");
   }
 
   /** Makes a folder a project, with its planning documents ready, each from its template. Any
@@ -474,7 +485,7 @@ export class Store {
     return ext ? stem + ext : null;
   }
 
-  /** The unvoiced lines in a `<name>.voice.json`, as `coanda voice` writes it. */
+  /** The unvoiced lines in a `<name>.voice.json`, as `howbench voice` writes it. */
   readVoiceReport(report: string): { unvoiced: UnvoicedLine[] } | null {
     try {
       const data = JSON.parse(readFileSync(this.resolvePath(report), "utf8")) as {

@@ -1,4 +1,4 @@
-// `coanda image`: makes a new image from a description, or edits images, through OpenRouter.
+// `howbench image`: makes a new image from a description, or edits images, through OpenRouter.
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, extname, join, resolve } from "node:path";
@@ -61,7 +61,7 @@ export interface ImageResult {
   model: string;
   /** The output size asked for, or null when the model chooses. */
   size: string | null;
-  /** GPT Image 2.5's prices, in US dollars; null for another model, whose prices Coanda
+  /** GPT Image 2.5's prices, in US dollars; null for another model, whose prices Howbench
    * doesn't know. */
   estimatedCost: number | null;
   /** What OpenRouter charged, in US dollars; null for an estimate, or when it didn't say. */
@@ -92,7 +92,7 @@ export async function image(opts: ImageOptions): Promise<ImageResult> {
   if (opts.size && !askedSize) throw new Error(`The size must be like 1536x1024: ${opts.size}`);
   const size = askedSize ? snapToOpenAiImageSize(askedSize) : null;
 
-  const work = mkdtempSync(join(tmpdir(), "coanda-image-"));
+  const work = mkdtempSync(join(tmpdir(), "howbench-image-"));
   try {
     // References go at most 1024px on their long edge, where they cost least for what they show;
     // an image being edited keeps its detail up to where more would cost nothing.
@@ -122,7 +122,7 @@ export async function image(opts: ImageOptions): Promise<ImageResult> {
     if (opts.estimate) return { ...result, out: null, cost: null };
 
     const key = openRouterKey();
-    if (!key) throw new Error("No OpenRouter key: set one in Coanda's settings");
+    if (!key) throw new Error("No OpenRouter key: set one in Howbench's settings");
     // Before paying for the image, so there's somewhere to save it.
     mkdirSync(dirname(out), { recursive: true });
     const made = await generateImage(key, {

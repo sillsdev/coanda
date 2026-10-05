@@ -20,7 +20,7 @@ interface FakeState {
 test("each video project gets its own Claude session, which survives a restart", async ({
   page,
 }) => {
-  const scratch = mkdtempSync(join(tmpdir(), "coanda-agents-"));
+  const scratch = mkdtempSync(join(tmpdir(), "howbench-agents-"));
   const root = join(scratch, "videos");
   cpSync(join(repo, "samples"), root, { recursive: true });
   // Two video projects.
@@ -84,10 +84,10 @@ test("each video project gets its own Claude session, which survives a restart",
     await expect(log.locator(".agent-msg.assistant").first()).toHaveText(
       `Turn 1 in session ${first}`,
     );
-    // The block of replies is for Coanda, not for the reviewer to read.
-    await expect(log).not.toContainText("```coanda");
+    // The block of replies is for Howbench, not for the reviewer to read.
+    await expect(log).not.toContainText("```howbench");
 
-    // It was started in auto mode, in the reviewed folder, with Coanda's instructions.
+    // It was started in auto mode, in the reviewed folder, with Howbench's instructions.
     const started = readFake(first).starts[0];
     expect(started.args).toEqual(expect.arrayContaining(["--permission-mode", "auto"]));
     expect(started.args).toContain("--append-system-prompt-file");
@@ -112,7 +112,7 @@ test("each video project gets its own Claude session, which survives a restart",
     await expect(log).toContainText(`Turn 1 in session ${second}`);
     await expect(projectBadge("getting-started")).toHaveAttribute("data-status", "question");
 
-    // Restart Coanda. Each project's transcript is still shown, and its next message resumes
+    // Restart Howbench. Each project's transcript is still shown, and its next message resumes
     // the same conversation: turn 3 of the first session, not turn 1 of a new one.
     server.close();
     server = await serve(options);
@@ -130,7 +130,7 @@ test("each video project gets its own Claude session, which survives a restart",
       expect.arrayContaining(["--resume", first]),
     );
 
-    // Coanda stopping in the middle of a turn: when it starts again, the session carries on
+    // Howbench stopping in the middle of a turn: when it starts again, the session carries on
     // with that turn by itself, told what the reviewer last said.
     await message(page, "Make it shorter");
     await expect(projectBadge("getting-started")).toHaveAttribute("data-status", "working");
@@ -138,13 +138,13 @@ test("each video project gets its own Claude session, which survives a restart",
     server = await serve(options);
     await page.goto(`http://127.0.0.1:${server.port}/`);
     await page.locator('[data-path="getting-started/welcome.webm"]').click();
-    await expect(log).toContainText("Coanda restarted during this turn. Carrying on.");
+    await expect(log).toContainText("HowBench restarted during this turn. Carrying on.");
     await expect(projectBadge("getting-started")).toHaveAttribute("data-status", "done");
     expect(readFake(first).lastMessage).toContain(
       "the reviewer's last message was:\n\nMake it shorter",
     );
 
-    // A video outside every project offers to make one; Send there goes to `coanda wait`.
+    // A video outside every project offers to make one; Send there goes to `howbench wait`.
     rmSync(join(root, "advanced", "video-project.json"));
     await page.reload();
     await page.locator('[data-path="advanced/editing-tips.webm"]').click();

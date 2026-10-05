@@ -28,7 +28,8 @@ import { ProjectHome } from "./components/ProjectHome.tsx";
 import { Settings } from "./components/Settings.tsx";
 import { Splitter } from "./components/Splitter.tsx";
 import { VideoTree } from "./components/VideoTree.tsx";
-import { findNode, isDocument, sumOwned } from "./format.ts";
+import { findNode, isDocument, isViewable, newestVideo, sumOwned } from "./format.ts";
+import { FileView } from "./components/FileView.tsx";
 import "./App.css";
 
 function videoFromHash(): string | undefined {
@@ -37,9 +38,9 @@ function videoFromHash(): string | undefined {
 }
 
 const SIDEBARS = {
-  left: { key: "coanda.leftWidth", initial: 236, min: 160, max: 520 },
-  right: { key: "coanda.rightWidth", initial: 340, min: 260, max: 640 },
-  agent: { key: "coanda.agentWidth", initial: 380, min: 280, max: 760 },
+  left: { key: "howbench.leftWidth", initial: 236, min: 160, max: 520 },
+  right: { key: "howbench.rightWidth", initial: 340, min: 260, max: 640 },
+  agent: { key: "howbench.agentWidth", initial: 380, min: 280, max: 760 },
 };
 
 /** A sidebar width remembered in this browser, kept within its limits. */
@@ -78,7 +79,7 @@ function App() {
   const [videoInfo, setVideoInfo] = useState<VideoInfo | null>(null);
   const [showSubtitles, setShowSubtitles] = useState(() => {
     try {
-      return localStorage.getItem("coanda.subtitles") !== "off";
+      return localStorage.getItem("howbench.subtitles") !== "off";
     } catch {
       return true;
     }
@@ -152,7 +153,10 @@ function App() {
   const scopeRef = useRef(scope);
   const loadProject = useCallback(async (folder: string) => {
     const { project: found } = await api.projectForFolder(folder).catch(() => ({ project: null }));
-    if (scopeRef.current === folder) setProject(found);
+    if (scopeRef.current !== folder) return;
+    // Another project's chat is never shown while this one's loads.
+    if (found !== projectRef.current) setAgent(null);
+    setProject(found);
   }, []);
   useEffect(() => {
     scopeRef.current = scope;
@@ -198,7 +202,7 @@ function App() {
     if (!auth) void api.claudeAuth().then(setAuth);
   }, [project, loadAgent, auth]);
 
-  // Until Claude Code is installed and logged in, keep asking: both happen outside Coanda.
+  // Until Claude Code is installed and logged in, keep asking: both happen outside Howbench.
   const loggedIn = auth?.loggedIn ?? true;
   useEffect(() => {
     if (loggedIn) return;
@@ -231,7 +235,7 @@ function App() {
           if (projectRef.current != null) void loadSteps(projectRef.current);
           // A subtitle file appearing beside the open video changes only the tree.
           const v = videoRef.current;
-          if (v && !isDocument(v)) void loadVideoInfo(v);
+          if (v && !isDocument(v) && !isViewable(v)) void loadVideoInfo(v);
         }
         if (e.type === "annotations" && e.video === videoRef.current) void loadAnnotations(e.video);
         if (e.type === "video-changed" && e.video === videoRef.current) setRenderedAt(Date.now());
@@ -277,7 +281,6 @@ function App() {
     setVideoInfo(null);
     setActiveId(null);
     setRenderedAt(null);
-    setAgent(null);
     // At once, so a response still on its way for the previous video is not shown on this one.
     videoRef.current = path;
     setVideo(path);
@@ -289,12 +292,17 @@ function App() {
   const node = video ? findNode(tree, video) : undefined;
   // Send covers the selected video's project when it has one, else what is in no project.
   const projectNode = project ? findNode(tree, project) : undefined;
+  // The draft step opens the newest video in the project made since the draft was asked for.
+  const newest = draftRequested ? newestVideo(projectNode?.children ?? []) : undefined;
+  const draftVideo =
+    newest && (newest.mtime ?? 0) >= Date.parse(draftRequested ?? "") ? newest : undefined;
   const questions = project == null ? [] : projectQuestions;
   // What Send sends: the open notes.
   const openTotal = sumOwned(projectNode?.children ?? tree, (n) => n.open ?? 0);
   const makeProject = async (folder: string) => {
     await api.makeProject(folder);
     setSelectedFolder(folder);
+    setAgent(null);
     setProject(folder);
     setTree(await api.tree());
   };
@@ -365,7 +373,7 @@ function App() {
   const openPath = (path: string) => void run(api.openPath(path, project));
 
   if (error && !info)
-    return <div className="fatal">Could not reach the Coanda server: {error}</div>;
+    return <div className="fatal">Could not reach the HowBench server: {error}</div>;
   if (!info) return null;
 
   return (
@@ -375,6 +383,19 @@ function App() {
           <Settings
             saved={keys}
             onSaveKey={async (which, key) => setKeys(await api.saveKey(which, key))}
+            bloom={
+              project != null
+                ? {
+                    path: bloom,
+                    onChoose: () =>
+                      void run(
+                        api
+                          .chooseBloom(project)
+                          .then((r) => setSettings((s) => ({ ...s, bloom: r.bloom ?? undefined }))),
+                      ),
+                  }
+                : undefined
+            }
           />
         </Header>
         <div
@@ -442,6 +463,8 @@ function App() {
               onOpen={(step) => chooseVideo(step.path)}
               onStart={startStep}
               draftRequested={draftRequested}
+              draftVideo={draftVideo?.path ?? null}
+              onOpenDraft={chooseVideo}
               onMakeDraft={makeDraft}
             />
           ) : video && node && isDocument(video) ? (
@@ -473,6 +496,8 @@ function App() {
                 )
               }
             />
+          ) : video && node && isViewable(video) ? (
+            <FileView path={video} mtime={node.mtime} />
           ) : video && node ? (
             <Player
               key={video}
@@ -496,7 +521,7 @@ function App() {
                 const next = !showSubtitles;
                 setShowSubtitles(next);
                 try {
-                  localStorage.setItem("coanda.subtitles", next ? "on" : "off");
+                  localStorage.setItem("howbench.subtitles", next ? "on" : "off");
                 } catch {
                   // Storage unavailable: the switch still works for this page.
                 }
@@ -548,7 +573,6 @@ function App() {
               project != null && void run(api.deleteQuestion(project, q.id).then(setQuestions))
             }
             onMakeProject={() => void run(makeProject(scope))}
-            bloom={bloom}
             model={settings.model ?? ""}
             effort={settings.effort ?? ""}
             onModel={(model) =>
@@ -558,14 +582,6 @@ function App() {
             onEffort={(effort) =>
               project != null &&
               void run(api.setProjectSettings(project, { effort }).then(setSettings))
-            }
-            onChooseBloom={() =>
-              project != null &&
-              void run(
-                api
-                  .chooseBloom(project)
-                  .then((r) => setSettings((s) => ({ ...s, bloom: r.bloom ?? undefined }))),
-              )
             }
             state={agent}
             auth={auth}

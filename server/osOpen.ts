@@ -81,9 +81,9 @@ export function osTrash(full: string): void {
         "-NonInteractive",
         "-Command",
         "Add-Type -AssemblyName Microsoft.VisualBasic; " +
-          `[Microsoft.VisualBasic.FileIO.FileSystem]::${method}($env:COANDA_TRASH, 'OnlyErrorDialogs', 'SendToRecycleBin')`,
+          `[Microsoft.VisualBasic.FileIO.FileSystem]::${method}($env:HOWBENCH_TRASH, 'OnlyErrorDialogs', 'SendToRecycleBin')`,
       ],
-      { env: { ...process.env, COANDA_TRASH: full }, encoding: "utf8" },
+      { env: { ...process.env, HOWBENCH_TRASH: full }, encoding: "utf8" },
     );
   } else if (process.platform === "darwin") {
     result = spawnSync(

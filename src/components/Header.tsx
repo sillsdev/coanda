@@ -14,7 +14,7 @@ export function Header({ rootName, video, reviewers, children }: Props) {
     <header className="app-header">
       <div className="brand">
         <img src="/logo.svg" alt="" className="brand-logo" />
-        <span className="brand-name">Coanda</span>
+        <span className="brand-name">HowBench</span>
       </div>
       <div className="crumbs" data-testid="breadcrumb">
         {crumbs.map((c, i) => (

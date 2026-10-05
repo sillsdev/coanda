@@ -219,19 +219,19 @@ export function DocView(props: Props) {
     const writing = draft?.open && body ? findQuote(body.textContent ?? "", draft.quote!) : null;
     const writingRange = writing && body ? rangeAt(body, writing.start, writing.end) : null;
     CSS.highlights.set(
-      "coanda-comment",
+      "howbench-comment",
       new Highlight(...found.filter((p) => p.a.id !== activeId).map((p) => p.range)),
     );
     CSS.highlights.set(
-      "coanda-comment-active",
+      "howbench-comment-active",
       new Highlight(
         ...found.filter((p) => p.a.id === activeId).map((p) => p.range),
         ...(writingRange ? [writingRange] : []),
       ),
     );
     return () => {
-      CSS.highlights.delete("coanda-comment");
-      CSS.highlights.delete("coanda-comment-active");
+      CSS.highlights.delete("howbench-comment");
+      CSS.highlights.delete("howbench-comment-active");
     };
   }, [mode, doc, passages, activeId, draft?.open, draft?.quote]);
 

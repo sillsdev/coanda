@@ -1,6 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 
-// The spec starts its own `coanda serve` on a scratch copy of samples/, so there is no
+// The spec starts its own `howbench serve` on a scratch copy of samples/, so there is no
 // webServer here. It needs a built app: run `vp build` first (the e2e script does).
 export default defineConfig({
   testDir: "e2e",

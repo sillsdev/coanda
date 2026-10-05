@@ -10,6 +10,9 @@ interface Props {
   onOpen: (step: PlanningStep) => void;
   /** When the draft video was asked for, or null. */
   draftRequested: string | null;
+  /** The video made for the draft step, once there is one. */
+  draftVideo: string | null;
+  onOpenDraft: (video: string) => void;
   onMakeDraft: () => void;
 }
 
@@ -26,6 +29,8 @@ export function ProjectHome({
   onStart,
   onOpen,
   draftRequested,
+  draftVideo,
+  onOpenDraft,
   onMakeDraft,
 }: Props) {
   const last = steps.at(-1);
@@ -75,7 +80,17 @@ export function ProjectHome({
               {draftRequested ? <CheckIcon size={13} /> : steps.length + 1}
             </span>
             <span className="step-title">Draft video</span>
-            <span className="step-state">{draftRequested ? "Asked for" : "Not started"}</span>
+            <span className="step-state">
+              {draftVideo ? "Made" : draftRequested ? "Asked for" : "Not started"}
+            </span>
+            {draftVideo && (
+              <button
+                className="btn btn-ghost-outline push-right"
+                onClick={() => onOpenDraft(draftVideo)}
+              >
+                Open
+              </button>
+            )}
             {!draftRequested && (
               <button
                 className="btn btn-primary push-right"

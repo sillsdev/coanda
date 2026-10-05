@@ -1,9 +1,9 @@
-# Prints, as a JSON array, the visible top-level windows that match: $env:COANDA_HWND, or those
-# of process $env:COANDA_PID whose title matches the regular expression $env:COANDA_TITLE (either
-# may be left out). With $env:COANDA_TIMEOUT_MS, waits up to that long for one to appear, then
+# Prints, as a JSON array, the visible top-level windows that match: $env:HOWBENCH_HWND, or those
+# of process $env:HOWBENCH_PID whose title matches the regular expression $env:HOWBENCH_TITLE (either
+# may be left out). With $env:HOWBENCH_TIMEOUT_MS, waits up to that long for one to appear, then
 # exits 1 with an empty array. Topmost first.
 . "$PSScriptRoot\common.ps1"
-$timeout = [int]$env:COANDA_TIMEOUT_MS
+$timeout = [int]$env:HOWBENCH_TIMEOUT_MS
 $clock = [Diagnostics.Stopwatch]::StartNew()
 while ($true) {
     $hits = @(Get-TargetWindows)

@@ -1,8 +1,8 @@
 // Records a window or a rectangle of a Windows screen for a video, for apps that Chromium doesn't
 // draw (WinForms, WPF, the system's own dialogs), which toolkit/recorder.ts can't see. It films
 // the screen with ffmpeg's ddagrab and writes the take folder's screen.mp4 and events.json
-// directly, in recorder.ts's format, so `coanda assemble`, `coanda subtitles` and the highlight
-// boxes work unchanged (there is no frames folder: skip `coanda frames`).
+// directly, in recorder.ts's format, so `howbench assemble`, `howbench subtitles` and the highlight
+// boxes work unchanged (there is no frames folder: skip `howbench frames`).
 //
 // ddagrab, not gdigrab: ddagrab takes frames from the Desktop Duplication API on the GPU and
 // keeps a steady 30 fps at full size, and it captures what apps draw on the GPU (WebView2, WPF).
@@ -12,7 +12,7 @@
 //
 // The system pointer is left out of the picture (draw_mouse=0): an app driven through UI
 // Automation never moves it, and the person's own pointer may be anywhere. The pointer in the
-// video is the one this recorder logs, which Coanda draws. Pass `drawMouse: true` only when the
+// video is the one this recorder logs, which Howbench draws. Pass `drawMouse: true` only when the
 // project really moves the mouse during the take.
 //
 // Driving the app is the project's business (UI Automation, MSAA, the app's own API). This logs
@@ -393,7 +393,7 @@ export async function startScreenRecorder(opts: ScreenRecorderOptions) {
       await r.at(r.speechEnds + extra);
     },
 
-    // The pointer Coanda draws, logged in screen pixels. It starts off the picture, at its
+    // The pointer Howbench draws, logged in screen pixels. It starts off the picture, at its
     // bottom right. Nothing here moves the system pointer.
     cursorX: area.x + area.width + 16,
     cursorY: area.y + area.height + 32,
@@ -416,7 +416,7 @@ export async function startScreenRecorder(opts: ScreenRecorderOptions) {
      * rectangle, at a fraction (fx, fy) of it. */
     moveToRect: (box: Box, ms?: number, fx = 0.5, fy = 0.5) =>
       r.moveTo(box.x + box.width * fx, box.y + box.height * fy, ms),
-    /** Logs a press where the pointer is, which Coanda shows as a ripple, without clicking. */
+    /** Logs a press where the pointer is, which Howbench shows as a ripple, without clicking. */
     ripple() {
       presses.push(pointerSample(r.cursorX, r.cursorY));
       pointerActed = now();

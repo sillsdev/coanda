@@ -8,14 +8,14 @@
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = New-Object Text.UTF8Encoding $false
 
-if (-not ('CoandaWin' -as [type])) {
+if (-not ('HowbenchWin' -as [type])) {
     Add-Type -TypeDefinition @'
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
 
-public static class CoandaWin {
+public static class HowbenchWin {
     [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
     [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X, Y; }
     public delegate bool EnumProc(IntPtr h, IntPtr l);
@@ -117,7 +117,7 @@ public interface IDXGIAdapter {
 [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
 public struct DXGI_OUTPUT_DESC {
     [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string DeviceName;
-    public CoandaWin.RECT DesktopCoordinates;
+    public HowbenchWin.RECT DesktopCoordinates;
     public int AttachedToDesktop;
     public int Rotation;
     public IntPtr Monitor;
@@ -129,7 +129,7 @@ public interface IDXGIOutput {
     [PreserveSig] int GetDesc(out DXGI_OUTPUT_DESC desc);
 }
 
-public static class CoandaDxgi {
+public static class HowbenchDxgi {
     [DllImport("dxgi.dll")] static extern int CreateDXGIFactory1(ref Guid riid, [MarshalAs(UnmanagedType.IUnknown)] out object factory);
 
     /** The outputs of the first graphics adapter, in the order ffmpeg's ddagrab numbers them. */
@@ -154,60 +154,60 @@ public static class CoandaDxgi {
 }
 
 # Per-monitor aware (v2). Fails harmlessly if the process's awareness is already set.
-[CoandaWin]::SetProcessDpiAwarenessContext([IntPtr](-4)) | Out-Null
+[HowbenchWin]::SetProcessDpiAwarenessContext([IntPtr](-4)) | Out-Null
 
 function ConvertTo-Box($r) {
     [ordered]@{ x = $r.Left; y = $r.Top; width = $r.Right - $r.Left; height = $r.Bottom - $r.Top }
 }
 
 # What the TypeScript side reads about a window, including the visible windows above it that
-# overlap it, or overlap $env:COANDA_AREA ("x,y,width,height") if set: anything there would be
+# overlap it, or overlap $env:HOWBENCH_AREA ("x,y,width,height") if set: anything there would be
 # in a screen recording of it.
 function Get-WindowInfo([IntPtr]$h, [System.Collections.Generic.List[IntPtr]]$zOrder) {
-    $frame = [CoandaWin]::Frame($h)
+    $frame = [HowbenchWin]::Frame($h)
     $area = $frame
-    if ($env:COANDA_AREA) {
-        $x, $y, $w, $ht = $env:COANDA_AREA.Split(',') | ForEach-Object { [int]$_ }
-        $area = New-Object CoandaWin+RECT
+    if ($env:HOWBENCH_AREA) {
+        $x, $y, $w, $ht = $env:HOWBENCH_AREA.Split(',') | ForEach-Object { [int]$_ }
+        $area = New-Object HowbenchWin+RECT
         $area.Left = $x; $area.Top = $y; $area.Right = $x + $w; $area.Bottom = $y + $ht
     }
-    $windowPid = [CoandaWin]::ProcessId($h)
+    $windowPid = [HowbenchWin]::ProcessId($h)
     $above = @()
     foreach ($other in $zOrder) {
         if ($other -eq $h) { break }
-        if ([CoandaWin]::Cloaked($other)) { continue }
-        $r = [CoandaWin]::Frame($other)
-        if ($r.Right -le $r.Left -or $r.Bottom -le $r.Top -or -not [CoandaWin]::Overlap($r, $area)) { continue }
-        $otherPid = [CoandaWin]::ProcessId($other)
+        if ([HowbenchWin]::Cloaked($other)) { continue }
+        $r = [HowbenchWin]::Frame($other)
+        if ($r.Right -le $r.Left -or $r.Bottom -le $r.Top -or -not [HowbenchWin]::Overlap($r, $area)) { continue }
+        $otherPid = [HowbenchWin]::ProcessId($other)
         $name = try { (Get-Process -Id $otherPid).ProcessName } catch { '' }
-        $above += [ordered]@{ pid = $otherPid; process = $name; className = [CoandaWin]::ClassName($other); frame = ConvertTo-Box $r }
+        $above += [ordered]@{ pid = $otherPid; process = $name; className = [HowbenchWin]::ClassName($other); frame = ConvertTo-Box $r }
     }
     [ordered]@{
         hwnd = $h.ToInt64()
         pid = $windowPid
-        title = [CoandaWin]::Title($h)
-        className = [CoandaWin]::ClassName($h)
+        title = [HowbenchWin]::Title($h)
+        className = [HowbenchWin]::ClassName($h)
         frame = ConvertTo-Box $frame
-        client = ConvertTo-Box ([CoandaWin]::Client($h))
-        dpi = [CoandaWin]::MonitorDpi($h)
-        minimized = [CoandaWin]::IsIconic($h)
-        cloaked = [CoandaWin]::Cloaked($h)
-        foreground = [CoandaWin]::GetForegroundWindow() -eq $h
+        client = ConvertTo-Box ([HowbenchWin]::Client($h))
+        dpi = [HowbenchWin]::MonitorDpi($h)
+        minimized = [HowbenchWin]::IsIconic($h)
+        cloaked = [HowbenchWin]::Cloaked($h)
+        foreground = [HowbenchWin]::GetForegroundWindow() -eq $h
         above = @($above)
     }
 }
 
 function Get-TargetWindows {
-    $zOrder = [CoandaWin]::TopLevel()
+    $zOrder = [HowbenchWin]::TopLevel()
     $hits = @()
-    if ($env:COANDA_HWND) {
-        $h = [IntPtr][int64]$env:COANDA_HWND
-        if (-not [CoandaWin]::IsWindow($h)) { throw "No window $($env:COANDA_HWND)" }
+    if ($env:HOWBENCH_HWND) {
+        $h = [IntPtr][int64]$env:HOWBENCH_HWND
+        if (-not [HowbenchWin]::IsWindow($h)) { throw "No window $($env:HOWBENCH_HWND)" }
         return @(Get-WindowInfo $h $zOrder)
     }
     foreach ($h in $zOrder) {
-        if ($env:COANDA_PID -and [CoandaWin]::ProcessId($h) -ne [int]$env:COANDA_PID) { continue }
-        if ($env:COANDA_TITLE -and -not ([CoandaWin]::Title($h) -match $env:COANDA_TITLE)) { continue }
+        if ($env:HOWBENCH_PID -and [HowbenchWin]::ProcessId($h) -ne [int]$env:HOWBENCH_PID) { continue }
+        if ($env:HOWBENCH_TITLE -and -not ([HowbenchWin]::Title($h) -match $env:HOWBENCH_TITLE)) { continue }
         $hits += , (Get-WindowInfo $h $zOrder)
     }
     return @($hits)

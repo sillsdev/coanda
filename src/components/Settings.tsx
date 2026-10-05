@@ -5,6 +5,9 @@ import { KeyIcon, PasteIcon } from "./icons.tsx";
 interface Props {
   saved: SavedKeys;
   onSaveKey: (which: keyof SavedKeys, key: string) => Promise<void>;
+  /** The selected project's Bloom worktree, when a project is selected; its path is null when
+   * none is chosen. */
+  bloom?: { path: string | null; onChoose: () => void };
 }
 
 const KEYS: { which: keyof SavedKeys; label: string }[] = [
@@ -13,7 +16,7 @@ const KEYS: { which: keyof SavedKeys; label: string }[] = [
 ];
 
 /** The key button in the header, with a place for each API key Claude's tools use. */
-export function Settings({ saved, onSaveKey }: Props) {
+export function Settings({ saved, onSaveKey, bloom }: Props) {
   const [open, setOpen] = useState(false);
   const boxRef = useRef<HTMLDivElement>(null);
   /** What's left on the OpenRouter account, fetched each time the box opens. */
@@ -44,8 +47,8 @@ export function Settings({ saved, onSaveKey }: Props) {
     <div className="settings" ref={boxRef}>
       <button
         className="icon-btn"
-        aria-label="Keys"
-        title="Keys"
+        aria-label="Settings"
+        title="Settings"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
       >
@@ -53,6 +56,21 @@ export function Settings({ saved, onSaveKey }: Props) {
       </button>
       {open && (
         <div className="settings-pop" data-testid="settings">
+          {bloom && (
+            <div className="key-field">
+              <div className="key-head">
+                <span className="eyebrow">Bloom for this project</span>
+                <button className="link-btn small-btn push-right" onClick={bloom.onChoose}>
+                  {bloom.path ? "Change…" : "Choose…"}
+                </button>
+              </div>
+              {bloom.path && (
+                <div className="key-masked mono" title={bloom.path}>
+                  {bloom.path}
+                </div>
+              )}
+            </div>
+          )}
           {KEYS.map(({ which, label }) => (
             <KeyField
               key={which}

@@ -34,7 +34,7 @@ export function QuestionCard({
         </div>
         {question.answer ? (
           <div className="question-answer">
-            <div className="chat-human" title={question.answer.by}>
+            <div className="question-answer-text" title={question.answer.by}>
               {question.answer.text}
             </div>
             <Avatar name={question.answer.by} className="tiny" />

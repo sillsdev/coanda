@@ -2,10 +2,10 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vite-plus/test";
-import { AgentManager, type AgentOptions, type CoandaReply } from "./agents.ts";
+import { AgentManager, type AgentOptions, type HowbenchReply } from "./agents.ts";
 
 // A stand-in for Claude Code. Each message is a turn, taken one at a time: it echoes the
-// message, says "Got: <message>", writes a coanda block replying to note <turn number>, waits 400 ms, then gives the
+// message, says "Got: <message>", writes a howbench block replying to note <turn number>, waits 400 ms, then gives the
 // turn's result.
 const FAKE = `
 import { createInterface } from "node:readline";
@@ -21,7 +21,7 @@ createInterface({ input: process.stdin }).on("line", (line) => {
     out({ type: "assistant", message: { content: [{ type: "text", text: "Got: " + text }] } });
     const id = ++turns;
     const block = JSON.stringify({ status: "done", replies: [{ video: "a.mp4", id, text: "Fixed " + id }] });
-    out({ type: "assistant", message: { content: [{ type: "text", text: "Done.\\n\\n\`\`\`coanda\\n" + block + "\\n\`\`\`" }] } });
+    out({ type: "assistant", message: { content: [{ type: "text", text: "Done.\\n\\n\`\`\`howbench\\n" + block + "\\n\`\`\`" }] } });
     await sleep(400);
     out({ type: "result", is_error: false });
   });
@@ -29,11 +29,11 @@ createInterface({ input: process.stdin }).on("line", (line) => {
 `;
 
 let dir: string;
-let replies: { video: string; id: number; reply: CoandaReply }[];
+let replies: { video: string; id: number; reply: HowbenchReply }[];
 let manager: AgentManager | undefined;
 
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), "coanda-agents-"));
+  dir = mkdtempSync(join(tmpdir(), "howbench-agents-"));
   writeFileSync(join(dir, "fake.mjs"), FAKE);
   replies = [];
 });
@@ -96,7 +96,7 @@ test("output that arrives from a process after stopAll is ignored", async () => 
   const lines = [
     {
       type: "assistant",
-      message: { content: [{ type: "text", text: "```coanda\n" + block + "\n```" }] },
+      message: { content: [{ type: "text", text: "```howbench\n" + block + "\n```" }] },
     },
     { type: "result", is_error: false },
   ];
@@ -201,7 +201,7 @@ test("a restart tells Claude which background commands it killed", async () => {
     first.stopAll();
     const second = make({ command });
     await until(() => second.state("p").messages.some((m) => m.text.includes("record take 4")));
-    const told = second.state("p").messages.find((m) => m.text.startsWith("Got: [Coanda]"));
+    const told = second.state("p").messages.find((m) => m.text.startsWith("Got: [Howbench]"));
     expect(told?.text).toContain("killed the command");
     expect(told?.text).toContain("- record take 4");
     expect(

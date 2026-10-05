@@ -1,5 +1,5 @@
-// coanda serve [<folder>] | coanda wait | coanda reply … | coanda subtitles … | coanda voice … |
-// coanda image …
+// howbench serve [<folder>] | howbench wait | howbench reply … | howbench subtitles … | howbench voice … |
+// howbench image …
 import { existsSync, readFileSync } from "node:fs";
 import { join, parse as parsePath, resolve } from "node:path";
 import type { SentAnnotation, Timeline } from "../shared/types.ts";
@@ -18,85 +18,86 @@ import {
 import { assemble, frameSizes, framesToVideo, gaps, oddFrames } from "../toolkit/take.ts";
 import { writeTranslatedSubtitles } from "../toolkit/translatedSubtitles.ts";
 import { voice, type VoiceMode } from "../toolkit/voice.ts";
+import { moveOldSettings } from "./migrate.ts";
 import { serve } from "./serve.ts";
 
 const DEFAULT_PORT = 4517;
 
 const USAGE = `Usage:
-  coanda serve [<folder>] [--port N] [--user NAME] [--config FILE]
+  howbench serve [<folder>] [--port N] [--user NAME] [--config FILE]
       Serve the review app for the videos under <folder>. Without <folder>, reopens the
       folder used last time. The app can switch folders too. Settings, sessions and the
-      remembered folder are kept beside --config (default ~/.coanda/config.json).
-  coanda wait [--port N] [--timeout SECONDS]
+      remembered folder are kept beside --config (default ~/.howbench/config.json).
+  howbench wait [--port N] [--timeout SECONDS]
       Block until the reviewer clicks Send, then print the sent annotations as JSON.
-  coanda reply <video> <id> <text> [--port N]
+  howbench reply <video> <id> <text> [--port N]
       Post Claude's reply to one annotation. Use "-" as <text> to read it from stdin.
-  coanda show <video> [--port N]
+  howbench show <video> [--port N]
       Select <video> in the open app, so the reviewer sees it.
-  coanda frames <take folder>
+  howbench frames <take folder>
       Make <take folder>/screen.mp4, a steady 30 fps video, from the frames the recorder
       (toolkit/recorder.ts) captured into it. Not needed after toolkit/screenRecorder.ts,
       which writes screen.mp4 itself.
-  coanda assemble <take folder> <out> --title PNG [--title-text PNG] --end PNG [--trim-idle]
+  howbench assemble <take folder> <out> --title PNG [--title-text PNG] --end PNG [--trim-idle]
       Make the silent picture: the take's screen.mp4 between a title card and an end card,
       the size of its frames. --title-text, with transparency, fades in over the title.
       Writes <out name>.timeline.json beside it: the take's narration lines, actions,
       highlight boxes, arrows, fades, pointer, clicks and keys at their times in the
       picture. Applies "markingEdits" from video-project.json, keeps every box up at least
       2 s, and with --trim-idle shortens still stretches where nothing happens to 1 s.
-  coanda odd-frames <take folder>
+  howbench odd-frames <take folder>
       List the take's frames whose file size is far from their neighbours', with their
       take times: the frames to look at after a take. Most are real changes in the app
       (a page reloading, a dialog); a broken capture shows the same way.
-  coanda gaps <file.srt>
+  howbench gaps <file.srt>
       Print the ten longest silences between subtitles.
-  coanda sheet <video> <out.png> <time or anchor>... [--crop W:H:X:Y] [--columns N]
+  howbench sheet <video> <out.png> <time or anchor>... [--crop W:H:X:Y] [--columns N]
                [--width PX] [--timeline FILE]
       Write one PNG of the video's frames at the given moments, each labelled with its
       time. A moment is seconds, or an anchor or box key from the timeline (default
       <video name>.timeline.json), or the start of one, with an optional offset, such as
       "click: Add Page+0.3". --crop cuts each frame to that part of the picture first.
-  coanda changes <video> <start> <seconds> [--threshold N] [--crop W:H:X:Y]
+  howbench changes <video> <start> <seconds> [--threshold N] [--crop W:H:X:Y]
       Print each moment the picture changes by more than N (default 0.6; a dialog or page
       change is over 2.5, the pointer moving well under 1), with how much.
-  coanda levels <video> <start> <seconds> [--step SECONDS]
+  howbench levels <video> <start> <seconds> [--step SECONDS]
       Print how loud the sound is every 0.03 s (or --step), in dB, to find when a sound
       really starts.
-  coanda summarize <video or timeline.json>
+  howbench summarize <video or timeline.json>
       Print what the timeline holds: narration lines, actions, boxes, clicks and keys,
       with their times.
-  coanda check <video> [--say-during TEXT] [--sheets FOLDER]
+  howbench check <video> [--say-during TEXT] [--sheets FOLDER]
       Check a finished draft or voiced video against its timeline and voice report:
       narration over an action or no beat before one, boxes shown under 2 s or that
       don't leave together, clicks the screen reacts to in under 0.3 s (measured in the
       video), pointer jumps and stops mid-move. Prints each finding with its time, and
       what couldn't be checked. --say-during names a line (its words) that may play over
       an action. With --sheets, also writes a sheet per highlight box into FOLDER.
-  coanda words <video> [--same SCRIPT=HEARD,...] [--language CODE]
-      Costs money: transcribe a voiced video with ElevenLabs (key from Coanda's settings)
+  howbench words <video> [--same SCRIPT=HEARD,...] [--language CODE]
+      Costs money: transcribe a voiced video with ElevenLabs (key from Howbench's settings)
       and check that every narration word is heard once, in order, inside its own line.
       --same accepts pairs speech recognition hears another way.
-  coanda subtitles <picture> <out> [--timeline FILE]
+  howbench subtitles <picture> <out> [--timeline FILE]
       Make the draft video: the silent picture with its narration as subtitles, each
       line shown for as long as it should take to say, from the narration lines in the
       picture's timeline (default <picture name>.timeline.json). No audio.
-  coanda voice <picture> <out> --mode plan|pass [--timeline FILE]
+  howbench voice <picture> <out> --mode plan|pass [--timeline FILE]
       The voice pass, which costs money: plan prints what it would record and cost, as
       JSON, and makes nothing; pass records each narration line, keeping any recording
       already made of the same words, and lays them over the picture, with a click under
       each press and a typing sound under each run of typing. Settings come from "voice"
       in video-project.json: "provider" is "elevenlabs" (costs money) or "kokoro" (free,
       runs here).
-  coanda translated-subtitles <video> <pairs.json> <code>
+  howbench translated-subtitles <video> <pairs.json> <code>
       Write <video name>.<code>.srt: subtitles in another language for a reviewer, in
       short phrases, each starting when the narration reaches the phrase's first word.
       <pairs.json> is a list of [narration phrase, translation] pairs that together make
       up the narration; timings come from <video name>.voice.json. "voice" and
       "subtitles" write these themselves for each language in "translations" in the
       recipe's voice entry.
-  coanda image <out> [<input>...] --prompt TEXT [--references] [--aspect 16:9 | --size WxH]
+  howbench image <out> [<input>...] --prompt TEXT [--references] [--aspect 16:9 | --size WxH]
                [--quality Q] [--model ID] [--estimate]
-      Make an image from TEXT through OpenRouter (key from Coanda's settings). Given
+      Make an image from TEXT through OpenRouter (key from Howbench's settings). Given
       <input> images, edit the first, with any others as references; with --references,
       make a new image from them all. --aspect is one of 2:3 3:4 9:16 1:1 4:3 3:2 16:9
       21:9; --size asks for exact pixels, brought to the nearest the model accepts;
@@ -104,10 +105,10 @@ const USAGE = `Usage:
       stdin. The model defaults to "images.model" in video-project.json, else
       openai/gpt-image-2.5-sunburst. Prints the file and what it cost; --estimate prints
       only the estimated cost and makes nothing.
-  coanda image --credits
+  howbench image --credits
       Print what's left on the OpenRouter account.
 
-The port defaults to $COANDA_PORT, or ${DEFAULT_PORT}.`;
+The port defaults to $HOWBENCH_PORT, or ${DEFAULT_PORT}.`;
 
 /** Options that take no value. */
 const SWITCHES = new Set(["estimate", "references", "credits", "trim-idle"]);
@@ -129,9 +130,10 @@ function parse(argv: string[]) {
 }
 
 async function main() {
+  moveOldSettings();
   const [command, ...rest] = process.argv.slice(2);
   const { positional, flags } = parse(rest);
-  const port = Number(flags.port ?? process.env.COANDA_PORT ?? DEFAULT_PORT);
+  const port = Number(flags.port ?? process.env.HOWBENCH_PORT ?? DEFAULT_PORT);
   const base = `http://127.0.0.1:${port}`;
 
   switch (command) {
@@ -143,7 +145,7 @@ async function main() {
         ...(flags.config ? { configFile: flags.config } : {}),
       });
       const where = server.root ?? "no folder yet (choose one in the app)";
-      console.log(`Coanda is serving ${where} at http://localhost:${server.port}`);
+      console.log(`Howbench is serving ${where} at http://localhost:${server.port}`);
       break;
     }
 
@@ -167,7 +169,7 @@ async function main() {
           // Ride out a server restart, but not a server that is gone.
           if (++failures > 5) {
             throw new Error(
-              `Could not reach the Coanda server at ${base}. Is \`coanda serve\` running?`,
+              `Could not reach the Howbench server at ${base}. Is \`howbench serve\` running?`,
               { cause: err },
             );
           }
@@ -360,7 +362,7 @@ async function main() {
       const [video] = positional;
       if (!video) throw new UsageError("words needs <video>");
       const apiKey = elevenLabsKey();
-      if (!apiKey) throw new Error("No ElevenLabs key: set one in Coanda's settings");
+      if (!apiKey) throw new Error("No ElevenLabs key: set one in Howbench's settings");
       const sameWords = (flags.same ?? "")
         .split(",")
         .filter((pair) => pair.includes("="))
@@ -396,7 +398,7 @@ async function main() {
     case "image": {
       if (flags.credits) {
         const key = openRouterKey();
-        if (!key) throw new Error("No OpenRouter key: set one in Coanda's settings");
+        if (!key) throw new Error("No OpenRouter key: set one in Howbench's settings");
         const c = await credits(key);
         console.log(`$${c.remaining.toFixed(2)} left of $${c.total.toFixed(2)}`);
         break;

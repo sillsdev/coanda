@@ -90,7 +90,7 @@ export interface AnnotationFile {
 
 /**
  * A render's timeline, written by the pipeline beside the video as `<name>.timeline.json`: the
- * named moments in it (narration lines, actions) and when they happen. Coanda lines up the
+ * named moments in it (narration lines, actions) and when they happen. Howbench lines up the
  * reviewed render's timeline with the new one to move annotations after a re-cut. An anchor
  * with `say` is a narration line, and `say` is its words.
  */
@@ -216,7 +216,7 @@ export interface TreeNode {
 }
 
 /**
- * idle: no turn has run since Coanda started. working: Claude is on a turn.
+ * idle: no turn has run since Howbench started. working: Claude is on a turn.
  * done: Claude finished its turn. question: Claude finished and needs the reviewer.
  * error: the turn failed or Claude Code stopped.
  */
@@ -290,7 +290,7 @@ export interface ServerInfo {
   recent: string[];
 }
 
-/** What `coanda wait` prints: one entry per annotation sent to Claude. */
+/** What `howbench wait` prints: one entry per annotation sent to Claude. */
 export interface SentAnnotation extends Annotation {
   video: string;
   /** Absolute path of the video file. */
@@ -319,6 +319,12 @@ export const PLANNING_STEPS = [
   { key: "brief", title: "Brief", file: "brief.md" },
   { key: "outline", title: "Outline", file: "outline.md" },
   { key: "script", title: "Script", file: "script.md" },
+] as const;
+
+/** The videos that follow the planning documents, in the project folder under these names. */
+export const PROJECT_VIDEOS = [
+  { key: "draft", title: "Draft video", file: "draft.mp4" },
+  { key: "voiced", title: "Voiced video", file: "voiced.mp4" },
 ] as const;
 
 export type PlanningStepKey = (typeof PLANNING_STEPS)[number]["key"];
@@ -361,8 +367,8 @@ export interface DocText {
 }
 
 export interface ServerStatus {
-  /** True while a `coanda wait` is connected. */
+  /** True while a `howbench wait` is connected. */
   waiting: boolean;
-  /** Sent annotations that no `coanda wait` has collected yet. */
+  /** Sent annotations that no `howbench wait` has collected yet. */
   undelivered: number;
 }

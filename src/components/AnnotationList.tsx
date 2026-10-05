@@ -92,7 +92,7 @@ export function AnnotationList(props: Props) {
   return (
     <section className="panel">
       <div className="panel-head">
-        <div className="panel-title">TODOs</div>
+        <div className="panel-title">Annotations</div>
         <span className="open-badge" data-testid="unresolved-count">
           {unresolved.length} open
         </span>

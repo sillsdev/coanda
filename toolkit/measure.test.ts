@@ -27,7 +27,7 @@ const timeline: Timeline = {
 /** A 2 s video, 192x108 at 30 fps: black for the first second, then white, with a tone from
  * 0.5 s. */
 function blackThenWhite(): string {
-  const dir = mkdtempSync(join(tmpdir(), "coanda-measure-"));
+  const dir = mkdtempSync(join(tmpdir(), "howbench-measure-"));
   const video = join(dir, "bw.mp4");
   ffmpeg([
     "-f",
@@ -113,7 +113,7 @@ test("measures a video: when the picture changes, how loud it is, a click's reac
 
 test("a contact sheet puts the frames in rows, labelled", () => {
   const video = blackThenWhite();
-  const out = join(mkdtempSync(join(tmpdir(), "coanda-sheet-test-")), "sheet.png");
+  const out = join(mkdtempSync(join(tmpdir(), "howbench-sheet-test-")), "sheet.png");
   contactSheet({ video, out, times: [0.2, 0.8, 1.2, 1.6], labels: ["a: 50%", "b"], width: 160 });
   expect(existsSync(out)).toBe(true);
   // Three to a row: two rows of 160x90 frames.

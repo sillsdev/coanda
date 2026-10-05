@@ -1,5 +1,5 @@
 // Settings for a video project that belong to this machine, not to the project's files:
-// which Bloom worktree its Claude session drives. Kept in ~/.coanda/projects.json, keyed by
+// which Bloom worktree its Claude session drives. Kept in ~/.howbench/projects.json, keyed by
 // the project folder's absolute path.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";

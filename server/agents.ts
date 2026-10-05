@@ -19,41 +19,41 @@ import type {
   UsageWindow,
 } from "../shared/types.ts";
 
-/** Coanda's instructions to every video session, kept in agent/guidance.md and read each time a
+/** Howbench's instructions to every video session, kept in agent/guidance.md and read each time a
  * session starts, so edits to it reach the next session without rebuilding anything. */
 const GUIDANCE_FILE = fileURLToPath(new URL("../agent/guidance.md", import.meta.url));
 
-const COANDA_DIR = fileURLToPath(new URL("..", import.meta.url))
+const HOWBENCH_DIR = fileURLToPath(new URL("..", import.meta.url))
   .replaceAll("\\", "/")
   .replace(/\/$/, "");
 
-/** Whether Coanda runs from its source, where its developer works on it, or is just installed. */
-function coandaSituation(): string {
-  return existsSync(join(COANDA_DIR, ".git"))
-    ? `Coanda is running from its source code, a git checkout at ${COANDA_DIR}. Its developer ` +
+/** Whether Howbench runs from its source, where its developer works on it, or is just installed. */
+function howbenchSituation(): string {
+  return existsSync(join(HOWBENCH_DIR, ".git"))
+    ? `Howbench is running from its source code, a git checkout at ${HOWBENCH_DIR}. Its developer ` +
         `works on it with Claude Code, in sessions named after the folder ` +
-        `("${basename(COANDA_DIR)}-…").`
-    : "Coanda is installed here, not run from its source: nobody on this machine works on " +
-        "Coanda's code, so there is no session to send Coanda's problems to.";
+        `("${basename(HOWBENCH_DIR)}-…").`
+    : "Howbench is installed here, not run from its source: nobody on this machine works on " +
+        "Howbench's code, so there is no session to send Howbench's problems to.";
 }
 
 function guidance(): string {
   try {
-    // `<coanda>` in the guidance stands for the Coanda folder and `<node>` for the Node that
-    // runs Coanda, so it can name Coanda's commands. Coanda needs a newer Node than a project's
+    // `<howbench>` in the guidance stands for the Howbench folder and `<node>` for the Node that
+    // runs Howbench, so it can name Howbench's commands. Howbench needs a newer Node than a project's
     // PATH may find.
     const text = readFileSync(GUIDANCE_FILE, "utf8")
-      .replaceAll("<coanda>", COANDA_DIR)
+      .replaceAll("<howbench>", HOWBENCH_DIR)
       .replaceAll("<node>", process.execPath.replaceAll("\\", "/"));
-    return `${text}\n\n## Where you are\n\n${coandaSituation()}`;
+    return `${text}\n\n## Where you are\n\n${howbenchSituation()}`;
   } catch {
     return FALLBACK_GUIDANCE;
   }
 }
 
-const FALLBACK_GUIDANCE = `You are working with a reviewer through Coanda, a video review app.
-Coanda's full instructions (agent/guidance.md in the Coanda repo) could not be read. Answer each
-annotation you are sent, end each turn with a fenced coanda block of replies, and do not
+const FALLBACK_GUIDANCE = `You are working with a reviewer through Howbench, a video review app.
+Howbench's full instructions (agent/guidance.md in the Howbench repo) could not be read. Answer each
+annotation you are sent, end each turn with a fenced howbench block of replies, and do not
 generate voice-over or publish anything unless the reviewer asks for it in words.`;
 
 const MAX_MESSAGES = 400;
@@ -63,7 +63,7 @@ interface Session {
   sessionId?: string;
   messages: AgentMessage[];
   proc?: ChildProcessWithoutNullStreams;
-  /** Text of the assistant messages since the last result, for finding the coanda block. A
+  /** Text of the assistant messages since the last result, for finding the howbench block. A
    * message sent while a turn is under way leaves it alone, so that turn's block still counts. */
   turnText: string[];
   model?: string;
@@ -100,7 +100,7 @@ interface Session {
 export interface ProjectLaunch {
   args?: string[];
   env?: Record<string, string>;
-  /** Added to Coanda's instructions for this project. */
+  /** Added to Howbench's instructions for this project. */
   instructions?: string;
 }
 
@@ -115,8 +115,8 @@ export interface AgentOptions {
   /** Extra arguments, environment and instructions for one project's process. */
   launch?: (project: string) => ProjectLaunch;
   onChange: (project: string) => void;
-  onReply: (video: string, id: number, reply: CoandaReply) => void;
-  /** A rendered video's time map: Coanda moves the video's annotations along it. */
+  onReply: (video: string, id: number, reply: HowbenchReply) => void;
+  /** A rendered video's time map: Howbench moves the video's annotations along it. */
   onTimeMap: (video: string, segments: TimeSegment[]) => void;
   /** A video was rendered this turn (it has an `unvoiced` entry) and came with no time map. */
   onRenderedWithoutMap: (video: string) => void;
@@ -153,7 +153,7 @@ export class AgentManager {
         lastSent: saved.lastSent,
       });
     }
-    // Sessions that Coanda stopped mid-turn, or with commands running in the background, carry
+    // Sessions that Howbench stopped mid-turn, or with commands running in the background, carry
     // on once whoever made this manager has it.
     setTimeout(() => {
       if (this.stopped) return;
@@ -161,7 +161,7 @@ export class AgentManager {
     }, 0);
   }
 
-  /** Restarts a session whose turn, or whose background commands, Coanda cut off when it
+  /** Restarts a session whose turn, or whose background commands, Howbench cut off when it
    * stopped, telling it so. */
   private resumeInterrupted(project: string, turn: boolean, killed: BackgroundTask[]): void {
     const s = this.sessions.get(project);
@@ -176,16 +176,16 @@ export class AgentManager {
     this.send(
       project,
       turn
-        ? "[Coanda] Coanda was restarted while you were working, which cut your turn off." +
+        ? "[Howbench] Howbench was restarted while you were working, which cut your turn off." +
             stopped +
             " Carry on from where you were, starting with a line saying what you're doing." +
             (last
               ? ` In case it didn't reach you, the reviewer's last message was:\n\n${last}`
               : "")
-        : "[Coanda] Coanda was restarted while you were waiting." + stopped,
+        : "[Howbench] Howbench was restarted while you were waiting." + stopped,
       turn
-        ? "Coanda restarted during this turn. Carrying on."
-        : "Coanda restarted and stopped what was running in the background.",
+        ? "HowBench restarted during this turn. Carrying on."
+        : "HowBench restarted and stopped what was running in the background.",
     );
     s.lastSent = last;
     s.background = [];
@@ -225,7 +225,7 @@ export class AgentManager {
     const current = this.instructionsFor(project);
     if (s.sessionId && s.instructions !== current && !text.trimStart().startsWith("/")) {
       text =
-        "[Coanda] Coanda's instructions to you have changed since this conversation began. " +
+        "[Howbench] Howbench's instructions to you have changed since this conversation began. " +
         "These replace the earlier ones:\n\n" +
         current +
         "\n\n---\n\n" +
@@ -241,7 +241,7 @@ export class AgentManager {
     if (s.status !== "working") s.workingSince = new Date().toISOString();
     s.status = "working";
     s.compacting = text.trim() === "/compact";
-    // On disk at once, so a Coanda stopped from now on knows to carry on with this turn.
+    // On disk at once, so a Howbench stopped from now on knows to carry on with this turn.
     this.save();
     s.proc!.stdin.write(
       JSON.stringify({ type: "user", message: { role: "user", content: text } }) + "\n",
@@ -279,8 +279,8 @@ export class AgentManager {
     s.proc = undefined;
   }
 
-  /** Stops every process as Coanda shuts down. A session that was working stays marked so,
-   * and carries on when Coanda next opens this folder. */
+  /** Stops every process as Howbench shuts down. A session that was working stays marked so,
+   * and carries on when Howbench next opens this folder. */
   stopAll(): void {
     for (const s of this.sessions.values()) {
       const proc = s.proc;
@@ -292,7 +292,7 @@ export class AgentManager {
     this.stopped = true;
   }
 
-  /** Coanda's guidance plus the project's own instructions, as a session should have them now. */
+  /** Howbench's guidance plus the project's own instructions, as a session should have them now. */
   private instructionsFor(project: string, extra = this.opts.launch?.(project) ?? {}): string {
     return extra.instructions ? `${guidance()}\n\n${extra.instructions}` : guidance();
   }
@@ -349,7 +349,7 @@ export class AgentManager {
 
     let buffer = "";
     // Output from a process that has been stopped or replaced is dropped: it may arrive after
-    // Coanda has moved to another folder.
+    // Howbench has moved to another folder.
     proc.stdout.on("data", (chunk: Buffer) => {
       if (s.proc !== proc) return;
       buffer += chunk.toString("utf8");
@@ -480,7 +480,7 @@ export class AgentManager {
       for (const block of Array.isArray(content) ? content : []) {
         if (block.type === "text" && block.text?.trim()) {
           s.turnText.push(block.text);
-          const shown = block.text.replace(/```coanda[\s\S]*?```/g, "").trim();
+          const shown = block.text.replace(/```howbench[\s\S]*?```/g, "").trim();
           if (shown) this.push(project, s, { role: "assistant", text: shown });
         } else if (block.type === "tool_use") {
           this.push(project, s, { role: "tool", text: describeTool(block.name, block.input) });
@@ -493,7 +493,7 @@ export class AgentManager {
         .map((x) => x.contextWindow)
         .filter((n): n is number => typeof n === "number");
       if (windows.length) s.contextWindow = Math.max(...windows);
-      const block = lastCoandaBlock(s.turnText.join("\n"));
+      const block = lastHowbenchBlock(s.turnText.join("\n"));
       for (const [video, raw] of Object.entries(block?.timeMap ?? {})) {
         const segments = validSegments(raw);
         if (!segments.length) continue;
@@ -565,7 +565,7 @@ export class AgentManager {
   private push(project: string, s: Session, message: Omit<AgentMessage, "at">) {
     s.messages.push({ ...message, at: new Date().toISOString() });
     if (s.messages.length > MAX_MESSAGES) s.messages.splice(0, s.messages.length - MAX_MESSAGES);
-    // Keep the transcript on disk as it grows, so stopping Coanda mid-turn loses none of it.
+    // Keep the transcript on disk as it grows, so stopping Howbench mid-turn loses none of it.
     clearTimeout(s.saveTimer);
     s.saveTimer = setTimeout(() => this.save(), 1000);
     this.opts.onChange(project);
@@ -629,9 +629,9 @@ interface SavedSession {
   contextWindow?: number;
   instructions?: string;
   lastSent?: string;
-  /** It was working when last saved: Coanda stopped in the middle of its turn. */
+  /** It was working when last saved: Howbench stopped in the middle of its turn. */
   working?: boolean;
-  /** Background commands running when last saved, which stopping Coanda killed. */
+  /** Background commands running when last saved, which stopping Howbench killed. */
   background?: BackgroundTask[];
 }
 
@@ -665,8 +665,8 @@ interface StreamMessage {
   };
 }
 
-/** One reply in a turn's coanda block. */
-export interface CoandaReply {
+/** One reply in a turn's howbench block. */
+export interface HowbenchReply {
   video: string;
   id: number;
   text: string;
@@ -675,23 +675,23 @@ export interface CoandaReply {
   t?: number;
 }
 
-interface CoandaBlock {
+interface HowbenchBlock {
   /** Per video rendered with different timing, how the previous render's times map to the new. */
   timeMap?: Record<string, unknown>;
   /** Per video rendered this turn, its complete list of unvoiced lines. */
   unvoiced?: Record<string, UnvoicedLine[]>;
   status?: string;
-  replies?: CoandaReply[];
+  replies?: HowbenchReply[];
   /** Questions for the reviewer, each answered on its own. */
   questions?: { text?: unknown; options?: unknown }[];
 }
 
-function lastCoandaBlock(text: string): CoandaBlock | null {
-  const blocks = [...text.matchAll(/```coanda\s*([\s\S]*?)```/g)];
+function lastHowbenchBlock(text: string): HowbenchBlock | null {
+  const blocks = [...text.matchAll(/```howbench\s*([\s\S]*?)```/g)];
   const last = blocks.at(-1);
   if (!last) return null;
   try {
-    return JSON.parse(last[1]) as CoandaBlock;
+    return JSON.parse(last[1]) as HowbenchBlock;
   } catch {
     return null;
   }

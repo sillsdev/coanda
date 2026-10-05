@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { isDocument } from "../format.ts";
+import { isDocument, isViewable } from "../format.ts";
 import type { TreeNode } from "../../shared/types.ts";
 import { AgentStatusBadge } from "./AgentStatusBadge.tsx";
 import { FolderPicker } from "./FolderPicker.tsx";
@@ -39,6 +39,19 @@ function hasVideoOrPlan(node: TreeNode): boolean {
   return (
     node.kind === "video" || node.step !== undefined || (node.children ?? []).some(hasVideoOrPlan)
   );
+}
+
+/** A project's draft and voiced videos in its folders, below its own folder, in step order. */
+function stepVideosBelow(nodes: TreeNode[]): TreeNode[] {
+  const found: TreeNode[] = [];
+  const look = (list: TreeNode[]) => {
+    for (const n of list) {
+      if (n.kind === "folder" && !n.project) look(n.children ?? []);
+      else if (n.kind === "video" && n.step !== undefined) found.push(n);
+    }
+  };
+  look(nodes.filter((n) => n.kind === "folder"));
+  return found.sort((a, b) => a.step! - b.step!);
 }
 
 function unresolvedBelow(node: TreeNode): number {
@@ -104,15 +117,28 @@ export function VideoTree(props: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected, tree.length > 0]);
 
-  const rows: { node: TreeNode; depth: number; open: boolean }[] = [];
-  const walk = (nodes: TreeNode[], depth: number) => {
-    for (const node of nodes) {
+  // `copy`: a draft or voiced video from deeper in the project, listed again after the
+  // planning documents.
+  const rows: { node: TreeNode; depth: number; open: boolean; copy?: boolean }[] = [];
+  const walk = (nodes: TreeNode[], depth: number, project = false) => {
+    nodes.forEach((node, i) => {
       const open = node.kind === "folder" && isOpen(node);
       rows.push({ node, depth, open });
-      if (open) walk(node.children ?? [], depth + 1);
-    }
+      const lastStep = project && node.step !== undefined && nodes[i + 1]?.step === undefined;
+      if (lastStep) {
+        const here = new Set(nodes.map((n) => n.step));
+        for (const copy of stepVideosBelow(nodes).filter((n) => !here.has(n.step))) {
+          rows.push({ node: copy, depth, open: false, copy: true });
+        }
+      }
+      if (open) walk(node.children ?? [], depth + 1, !!node.project);
+    });
   };
-  walk(tree, 0);
+  walk(
+    tree,
+    0,
+    tree.some((n) => n.name === "video-project.json"),
+  );
 
   return (
     <aside className="sidebar">
@@ -124,14 +150,14 @@ export function VideoTree(props: Props) {
         onChoose={props.onChooseRoot}
       />
       <div className="tree" role="tree">
-        {rows.map(({ node, depth, open }) => {
+        {rows.map(({ node, depth, open, copy }) => {
           const isFolder = node.kind === "folder";
-          // Documents open in the middle column; other files only in their own apps.
-          const isFile = node.kind === "file" && !isDocument(node.path);
+          // Documents, images and JSON open in the middle column; other files only in their own apps.
+          const isFile = node.kind === "file" && !isDocument(node.path) && !isViewable(node.path);
           const isSelected = node.path === selected;
           return (
             <div
-              key={node.path}
+              key={copy ? `copy:${node.path}` : node.path}
               role="treeitem"
               aria-selected={isSelected}
               data-path={node.path}
@@ -140,7 +166,7 @@ export function VideoTree(props: Props) {
                   ? `Modified ${new Date(node.mtime).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}`
                   : undefined
               }
-              className={`tree-row${isSelected ? " selected" : ""}${isFolder ? " folder" : ""}${isFile ? " file" : ""}${node.step ? " planning" : ""}${node.project ? " project" : ""}`}
+              className={`tree-row${isSelected ? " selected" : ""}${isFolder ? " folder" : ""}${isFile ? " file" : ""}${node.step ? " planning" : ""}${node.project ? " project" : ""}${copy ? " copy" : ""}`}
               style={{ paddingLeft: 8 + depth * 18 }}
               onClick={() => {
                 if (isFile) return;

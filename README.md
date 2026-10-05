@@ -1,23 +1,23 @@
-# Coanda
+# HowBench
 
-<img src="public/logo.svg" alt="Coanda logo" width="200">
+<img src="public/logo.svg" alt="HowBench logo" width="200">
 
-Coanda is a web app for working with Claude while it makes instructional videos. A Claude Code
+HowBench is a web app for working with Claude while it makes instructional videos. A Claude Code
 skill launches it. The first version lets you annotate a video Claude has made, so you can give
 feedback or ask for changes.
 
 ## How it works
 
-- `coanda serve <folder>` starts a local server on port 4517. It serves the app, streams the
+- `howbench serve <folder>` starts a local server on port 4517. It serves the app, streams the
   videos under `<folder>`, and keeps each video's annotations in a JSON file beside it
-  (`intro.mp4.coanda.json`, with frame images in `intro.mp4.coanda/`). Commit those files to
+  (`intro.mp4.howbench.json`, with frame images in `intro.mp4.howbench/`). Commit those files to
   share annotations between reviewers.
 - **Change…** in the Folder section at the top of the sidebar opens the operating system's
   folder chooser; **Recent** lists folders used before. The current folder and the recent ones are kept in
-  `~/.coanda/config.json`, so `coanda serve` with no folder reopens the last one.
+  `~/.howbench/config.json`, so `howbench serve` with no folder reopens the last one.
 - In the browser, click a paused frame to drop a pin, or drag to draw an arrow, then write what
   should change. **Send** hands every open annotation to Claude.
-- **Video projects.** A folder holding a `video-project.json` file is a video project. Coanda
+- **Video projects.** A folder holding a `video-project.json` file is a video project. HowBench
   gives each project its own Claude Code session, shown in the Claude panel on the far right when
   a video inside the project is selected. **Send** gives the project's open annotations to that
   session; Claude makes the changes, re-renders, and its replies land on the annotations. You can
@@ -25,17 +25,17 @@ feedback or ask for changes.
   working, done, question or error.
 - The session is a long-running `claude -p` process in auto mode, working in the reviewed
   folder, so it picks up that folder's `CLAUDE.md` and skills. Its session ID and transcript are
-  kept in `~/.coanda/sessions.json`, and after a restart it resumes the same conversation.
+  kept in `~/.howbench/sessions.json`, and after a restart it resumes the same conversation.
   Claude Code uses its own login (`claude auth login`); the panel offers **Log in to Claude** when
   it is signed out.
 - **Bloom.** The Claude panel's **Bloom** row sets the BloomDesktop worktree a project's session
-  runs Bloom from (kept per machine in `~/.coanda/projects.json`). The session gets that worktree
+  runs Bloom from (kept per machine in `~/.howbench/projects.json`). The session gets that worktree
   with `--add-dir`, and instructions to use its `run-bloom` skill and take ports from its launcher.
-- The key button in the header saves an ElevenLabs API key to `~/.coanda/elevenlabs_key.txt`.
+- The key button in the header saves an ElevenLabs API key to `~/.howbench/elevenlabs_key.txt`.
   Sessions get it as `ELEVENLABS_API_KEY`.
-- **Outside a project**, Send goes to whoever runs `coanda wait`, which blocks until something is
+- **Outside a project**, Send goes to whoever runs `howbench wait`, which blocks until something is
   sent and prints the annotations as JSON. Claude answers each one with
-  `coanda reply <video> <id> <text>`. The skill in [skills/coanda/SKILL.md](skills/coanda/SKILL.md)
+  `howbench reply <video> <id> <text>`. The skill in [skills/howbench/SKILL.md](skills/howbench/SKILL.md)
   tells Claude how; to use it, link that folder into `~/.claude/skills/`.
 
 The reviewer's name comes from `git config user.name` in the reviewed folder (`--user` overrides
@@ -48,7 +48,7 @@ pnpm. The server and CLI are TypeScript run directly by Node 24.
 
 ```sh
 vp install                      # install dependencies
-vp build                        # build the app into dist/, which `coanda serve` serves
+vp build                        # build the app into dist/, which `howbench serve` serves
 pnpm serve samples              # serve the sample videos at http://localhost:4517
 vp dev                          # dev server with hot reload; forwards /api and /media to 4517
 vp check                        # format, lint and type-check
@@ -58,8 +58,8 @@ pnpm samples                    # regenerate samples/ (needs ffmpeg)
 ```
 
 The Playwright tests copy `samples/` to a temporary folder and start a server on it.
-`review.spec.ts` annotates two videos, sends them, and answers them with the real `coanda wait`
-and `coanda reply` commands. `claude-sessions.spec.ts` checks the per-project Claude sessions
+`review.spec.ts` annotates two videos, sends them, and answers them with the real `howbench wait`
+and `howbench reply` commands. `claude-sessions.spec.ts` checks the per-project Claude sessions
 against `e2e/fake-claude.mjs`, a stand-in for `claude` that speaks the same stream-json protocol
 without a model. They run in the installed Google Chrome.
 

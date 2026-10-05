@@ -29,10 +29,10 @@ export default defineConfig({
   },
   plugins: lazyPlugins(() => [react()]),
   server: {
-    // In development, `vp dev` serves the app and forwards these to `coanda serve`.
+    // In development, `vp dev` serves the app and forwards these to `howbench serve`.
     proxy: {
-      "/api": `http://127.0.0.1:${process.env.COANDA_PORT ?? 4517}`,
-      "/media": `http://127.0.0.1:${process.env.COANDA_PORT ?? 4517}`,
+      "/api": `http://127.0.0.1:${process.env.HOWBENCH_PORT ?? 4517}`,
+      "/media": `http://127.0.0.1:${process.env.HOWBENCH_PORT ?? 4517}`,
     },
   },
   test: {

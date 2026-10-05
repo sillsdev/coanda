@@ -1,5 +1,5 @@
-// The local server that the browser app talks to, and that `coanda wait` and
-// `coanda reply` reach over the same port.
+// The local server that the browser app talks to, and that `howbench wait` and
+// `howbench reply` reach over the same port.
 import { execFileSync, spawn } from "node:child_process";
 import {
   copyFileSync,
@@ -40,10 +40,11 @@ import { osOpen, osReveal, osTrash } from "./osOpen.ts";
 import { mapFromTimelines, mapTime } from "./timeMap.ts";
 import { pickFolder } from "./pickFolder.ts";
 import { bloomLaunch, ProjectSettingsStore } from "./projectSettings.ts";
+import { moveOldReviewFiles } from "./migrate.ts";
 import { isDocument, isVideoFile, PROJECT_FILE, stampName, Store } from "./store.ts";
 
 const DIST = resolve(dirname(fileURLToPath(import.meta.url)), "..", "dist");
-/** Coanda's templates for planning documents. */
+/** Howbench's templates for planning documents. */
 const TEMPLATES = resolve(dirname(fileURLToPath(import.meta.url)), "..", "agent", "templates");
 
 /** Each planning step's template, by step key, read afresh so edits to them apply at once. */
@@ -60,6 +61,7 @@ const MIME: Record<string, string> = {
   ".svg": "image/svg+xml",
   ".png": "image/png",
   ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
   ".gif": "image/gif",
   ".webp": "image/webp",
   ".json": "application/json",
@@ -96,7 +98,7 @@ function gitGravatar(cwd: string): string | undefined {
   }
 }
 
-/** The reviewer's name and, when Coanda knows their email, their picture. */
+/** The reviewer's name and, when Howbench knows their email, their picture. */
 function whoAmI(cwd: string, user: string | undefined): Pick<ServerInfo, "user" | "avatars"> {
   if (user) return { user, avatars: {} };
   const name = gitUserName(cwd);
@@ -108,7 +110,7 @@ export interface ServeOptions {
   /** Folder to review. When absent, the folder remembered from the last run is used. */
   root?: string;
   port: number;
-  /** Where the remembered folder is kept. Defaults to ~/.coanda/config.json. */
+  /** Where the remembered folder is kept. Defaults to ~/.howbench/config.json. */
   configFile?: string;
   /** Overrides the reviewer name taken from git config. */
   user?: string;
@@ -163,14 +165,14 @@ export function serve(
     }, 120);
   };
 
-  // `coanda wait` requests parked until something is sent.
+  // `howbench wait` requests parked until something is sent.
   const waiters = new Set<ServerResponse>();
   // Sent annotations already handed to a waiter or a project's session, keyed "video#id". Kept
   // in memory only, so restarting the server hands any unanswered ones out again.
   const delivered = new Set<string>();
 
   /** Sent annotations not yet handed out, on the files a project owns; with a null project, on
-   * the files outside every project, which go to `coanda wait`. */
+   * the files outside every project, which go to `howbench wait`. */
   const undelivered = (project: string | null): SentAnnotation[] => {
     const out: SentAnnotation[] = [];
     if (!store) return out;
@@ -189,7 +191,7 @@ export function serve(
     return out;
   };
 
-  /** Hands what has been sent to one parked `coanda wait`; any others stay parked for the next
+  /** Hands what has been sent to one parked `howbench wait`; any others stay parked for the next
    * Send. */
   const releaseWaiters = () => {
     for (const w of waiters) if (w.destroyed || w.writableEnded) waiters.delete(w);
@@ -241,7 +243,7 @@ export function serve(
     emit({ type: "annotations", video });
   };
 
-  // `coanda voice` writes `<name>.voice.json` last, after the video and its timeline. Each one
+  // `howbench voice` writes `<name>.voice.json` last, after the video and its timeline. Each one
   // brings the render's unvoiced lines and moves the notes. The watcher reports a write several
   // times, so wait for it to settle.
   const voiceReportTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -269,8 +271,8 @@ export function serve(
     if (rel.split("/").some((part) => part.startsWith("."))) return;
     if (rel.endsWith(".voice.json")) {
       onVoiceReport(rel);
-    } else if (rel.endsWith(".coanda.json")) {
-      emit({ type: "annotations", video: rel.slice(0, -".coanda.json".length) });
+    } else if (rel.endsWith(".howbench.json")) {
+      emit({ type: "annotations", video: rel.slice(0, -".howbench.json".length) });
       emit({ type: "tree" });
     } else if (isDocument(rel)) {
       emit({ type: "doc-changed", path: rel });
@@ -278,7 +280,7 @@ export function serve(
     } else if (isVideoFile(rel)) {
       emit({ type: "video-changed", video: rel });
       emit({ type: "tree" });
-    } else if (!rel.includes(".coanda/")) {
+    } else if (!rel.includes(".howbench/")) {
       emit({ type: "tree" });
     }
   };
@@ -289,6 +291,7 @@ export function serve(
       throw new HttpError(400, `Not a folder: ${folder}`);
     }
     watcher?.close();
+    moveOldReviewFiles(full);
     store = new Store(full);
     watcher = watch(full, { recursive: true }, (_type, filename) => onFileChange(filename));
     delivered.clear();
@@ -474,7 +477,7 @@ export function serve(
       // An answer goes to Claude at once. The chat shows it in the question's card.
       agents?.send(
         project,
-        `[Coanda] ${asked!.answer!.by} answered your question "${asked!.text}": ${asked!.answer!.text}`,
+        `[Howbench] ${asked!.answer!.by} answered your question "${asked!.text}": ${asked!.answer!.text}`,
         null,
       );
       emit({ type: "questions", project });
@@ -511,7 +514,7 @@ export function serve(
       if (agents) {
         agents.send(
           project,
-          "[Coanda] The reviewer approved the script and asks for the draft video. Build it " +
+          "[Howbench] The reviewer approved the script and asks for the draft video. Build it " +
             "from the script as your guidance says for the draft video.",
           "Make the draft video",
         );
@@ -530,7 +533,7 @@ export function serve(
         const title = PLANNING_STEPS.find((s) => s.key === key)?.title ?? key;
         agents.send(
           project,
-          `[Coanda] The reviewer has started the ${title.toLowerCase()}: ${doc}. Work on it with ` +
+          `[Howbench] The reviewer has started the ${title.toLowerCase()}: ${doc}. Work on it with ` +
             `them as your guidance says for the ${title.toLowerCase()}.`,
           `Started the ${title.toLowerCase()}`,
         );
@@ -553,8 +556,8 @@ export function serve(
         agents.send(
           owner,
           body.approved
-            ? `[Coanda] The reviewer approved the ${what} (${video}), as it is now.`
-            : `[Coanda] The reviewer withdrew their approval of the ${what} (${video}).`,
+            ? `[Howbench] The reviewer approved the ${what} (${video}), as it is now.`
+            : `[Howbench] The reviewer withdrew their approval of the ${what} (${video}).`,
           body.approved ? `Approved the ${what}` : `Withdrew approval of the ${what}`,
         );
       }
@@ -932,7 +935,7 @@ export function serve(
       if (!video) throw new HttpError(400, "Give a video");
       agents.send(
         project,
-        `[Coanda] Voice pass for ${video}. Record every narration line of this video that has ` +
+        `[Howbench] Voice pass for ${video}. Record every narration line of this video that has ` +
           "no matching recording, so the voice is complete and up to date. This costs money, " +
           "so plan first: list the lines, their count and the estimated cost, and wait for the " +
           "reviewer's go-ahead before generating anything. When the voice is recorded and the " +
@@ -962,7 +965,7 @@ export function serve(
       const store = need();
       // With a project, the open annotations on the files it owns (not those of a project inside
       // it) go to its Claude session. Without one, the open annotations outside every project go
-      // to whoever runs `coanda wait`.
+      // to whoever runs `howbench wait`.
       let count = 0;
       for (const { video: v, annotations } of store.allAnnotated()) {
         if (!annotations.some((a) => a.status === "open")) continue;
@@ -1030,7 +1033,7 @@ export function serve(
       waiters.add(res);
       emit({ type: "status" });
       // Answer with an empty list after a while, so clients (Node's fetch gives up after
-      // 300 s) never wait on one request for too long; `coanda wait` just asks again.
+      // 300 s) never wait on one request for too long; `howbench wait` just asks again.
       const hold = Math.min(Number(url.searchParams.get("hold") ?? 50), 240) * 1000;
       const timer = setTimeout(() => {
         if (waiters.delete(res)) json(res, 200, []);
@@ -1082,7 +1085,7 @@ export function serve(
     const index = join(DIST, "index.html");
     if (!existsSync(index)) {
       res.writeHead(500, { "Content-Type": "text/plain" });
-      return res.end("The Coanda app has not been built. Run `vp build` in the Coanda folder.");
+      return res.end("The Howbench app has not been built. Run `vp build` in the Howbench folder.");
     }
     return sendFile(req, res, index);
   };
