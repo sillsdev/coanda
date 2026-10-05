@@ -1,5 +1,5 @@
 // `coanda image`: makes a new image from a description, or edits images, through OpenRouter.
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, extname, join, resolve } from "node:path";
 import { convertImage, imageSize } from "./ffmpeg.ts";
@@ -61,7 +61,9 @@ export interface ImageResult {
   model: string;
   /** The output size asked for, or null when the model chooses. */
   size: string | null;
-  estimatedCost: number;
+  /** GPT Image 2.5's prices, in US dollars; null for another model, whose prices Coanda
+   * doesn't know. */
+  estimatedCost: number | null;
   /** What OpenRouter charged, in US dollars; null for an estimate, or when it didn't say. */
   cost: number | null;
 }
@@ -108,16 +110,21 @@ export async function image(opts: ImageOptions): Promise<ImageResult> {
 
     const outputGuess: PixelSize | null =
       size ?? (opts.aspect ? fromAspect(opts.aspect) : editCount ? prepared[0].size : null);
-    const estimatedCost = estimateImageCostUsd(
-      prepared.map((p) => p.size),
-      outputGuess,
-      { editingDetail: editCount > 0 },
-    );
+    const estimatedCost =
+      model === DEFAULT_IMAGE_MODEL
+        ? estimateImageCostUsd(
+            prepared.map((p) => p.size),
+            outputGuess,
+            { editingDetail: editCount > 0 },
+          )
+        : null;
     const result = { model, size: size ? formatPixelSize(size) : null, estimatedCost };
     if (opts.estimate) return { ...result, out: null, cost: null };
 
     const key = openRouterKey();
     if (!key) throw new Error("No OpenRouter key: set one in Coanda's settings");
+    // Before paying for the image, so there's somewhere to save it.
+    mkdirSync(dirname(out), { recursive: true });
     const made = await generateImage(key, {
       model,
       prompt: withRoster(opts.prompt, prepared.length, editCount),

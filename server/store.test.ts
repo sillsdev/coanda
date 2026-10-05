@@ -52,6 +52,65 @@ test("annotation counts come from the file next to the video", () => {
   expect(intro).toMatchObject({ unresolved: 2, open: 1, sent: 1 });
 });
 
+test("renaming a video takes its notes' saved frames and images with it", () => {
+  const store = new Store(root);
+  writeFileSync(join(root, "lessons", "one.mp4.coanda", "1.png"), "");
+  const reviewed = join(root, "lessons", "one.mp4.coanda", "reviewed-x.mp4");
+  store.write("lessons/one.mp4", {
+    annotations: [
+      {
+        id: 1,
+        kind: "pin",
+        x: 1,
+        y: 1,
+        t: 0,
+        author: "A",
+        text: "x",
+        status: "open",
+        createdAt: "",
+        frame: "lessons/one.mp4.coanda/1.png",
+        images: ["lessons/one.mp4.coanda/pasted-a.png"],
+        thread: [
+          { who: "user", text: "y", at: "", images: ["lessons/one.mp4.coanda/pasted-b.png"] },
+        ],
+      },
+    ],
+    reviewed: { copy: reviewed },
+  });
+  store.rename("lessons/one.mp4", "two.mp4");
+  const data = store.read("lessons/two.mp4");
+  const a = data.annotations[0];
+  expect(a.frame).toBe("lessons/two.mp4.coanda/1.png");
+  expect(a.images).toEqual(["lessons/two.mp4.coanda/pasted-a.png"]);
+  expect(a.thread[0].images).toEqual(["lessons/two.mp4.coanda/pasted-b.png"]);
+  expect(data.reviewed?.copy).toBe(join(root, "lessons", "two.mp4.coanda", "reviewed-x.mp4"));
+
+  store.rename("lessons", "units");
+  expect(store.read("units/two.mp4").annotations[0].frame).toBe("units/two.mp4.coanda/1.png");
+});
+
+test("deleting a video takes the render's files named after it, unless another video shares them", () => {
+  const store = new Store(root);
+  for (const f of ["one.srt", "one.en.vtt", "one.timeline.json", "one.voice.json", "onex.srt"]) {
+    writeFileSync(join(root, "lessons", f), "");
+  }
+  const names = () =>
+    store
+      .withSidecars("lessons/one.mp4")
+      .map((f) => f.slice(join(root, "lessons").length + 1))
+      .sort();
+  expect(names()).toEqual([
+    "one.en.vtt",
+    "one.mp4",
+    "one.mp4.coanda",
+    "one.srt",
+    "one.timeline.json",
+    "one.voice.json",
+  ]);
+  writeFileSync(join(root, "lessons", "one.webm"), "");
+  expect(names()).toEqual(["one.mp4", "one.mp4.coanda"]);
+});
+
 test("paths outside the folder are refused", () => {
   expect(() => new Store(root).resolvePath("../elsewhere.mp4")).toThrow(/outside/);
 });

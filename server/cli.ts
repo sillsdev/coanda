@@ -401,7 +401,10 @@ async function main() {
         model: flags.model,
         estimate: Boolean(flags.estimate),
       });
-      const estimate = `about $${made.estimatedCost.toFixed(3)}`;
+      const estimate =
+        made.estimatedCost === null
+          ? "no estimate for this model"
+          : `about $${made.estimatedCost.toFixed(3)}`;
       if (!made.out) {
         console.log(`${made.model}${made.size ? ` at ${made.size}` : ""}: ${estimate}`);
       } else {

@@ -10,7 +10,14 @@ import type {
   TreeNode,
   VideoInfo,
 } from "../shared/types.ts";
-import { api, mediaUrl, subscribe, subtitleUrl, type SavedKeys } from "./api.ts";
+import {
+  api,
+  mediaUrl,
+  subscribe,
+  subtitleUrl,
+  type NewAnnotation,
+  type SavedKeys,
+} from "./api.ts";
 import { AvatarsContext } from "./avatars.ts";
 import { AgentPanel } from "./components/AgentPanel.tsx";
 import { AnnotationList } from "./components/AnnotationList.tsx";
@@ -21,7 +28,7 @@ import { ProjectHome } from "./components/ProjectHome.tsx";
 import { Settings } from "./components/Settings.tsx";
 import { Splitter } from "./components/Splitter.tsx";
 import { VideoTree } from "./components/VideoTree.tsx";
-import { findNode, isDocument } from "./format.ts";
+import { findNode, isDocument, sumOwned } from "./format.ts";
 import "./App.css";
 
 function videoFromHash(): string | undefined {
@@ -57,14 +64,6 @@ function useSidebarWidth(side: keyof typeof SIDEBARS) {
     }
   };
   return [width, resize] as const;
-}
-
-/** A count over every video and document in the tree. */
-function sumVideos(nodes: TreeNode[], pick: (n: TreeNode) => number): number {
-  return nodes.reduce(
-    (sum, n) => sum + (n.kind === "folder" ? sumVideos(n.children ?? [], pick) : pick(n)),
-    0,
-  );
 }
 
 function App() {
@@ -119,6 +118,7 @@ function App() {
   const rootRef = useRef<string | null | undefined>(undefined);
   const showFolder = useCallback((next: ServerInfo) => {
     if (rootRef.current !== undefined && rootRef.current !== next.root) {
+      videoRef.current = undefined;
       setVideo(undefined);
       setSelectedFolder(undefined);
       setAnnotations([]);
@@ -137,6 +137,12 @@ function App() {
     if (videoRef.current !== path) return;
     setAnnotations(list);
     setVideoInfo(await details);
+  }, []);
+
+  /** Refreshes the selected video's subtitles and unvoiced lines, keeping them if that fails. */
+  const loadVideoInfo = useCallback(async (path: string) => {
+    const details = await api.videoInfo(path).catch(() => undefined);
+    if (details && videoRef.current === path) setVideoInfo(details);
   }, []);
 
   // The folder whose project the Claude panel shows: the clicked folder, else the selected
@@ -223,6 +229,9 @@ function App() {
           void api.tree().then(setTree);
           void loadProject(scopeRef.current);
           if (projectRef.current != null) void loadSteps(projectRef.current);
+          // A subtitle file appearing beside the open video changes only the tree.
+          const v = videoRef.current;
+          if (v && !isDocument(v)) void loadVideoInfo(v);
         }
         if (e.type === "annotations" && e.video === videoRef.current) void loadAnnotations(e.video);
         if (e.type === "video-changed" && e.video === videoRef.current) setRenderedAt(Date.now());
@@ -244,7 +253,15 @@ function App() {
         }
       },
     );
-  }, [loadAnnotations, showFolder, loadAgent, loadProject, loadSteps, loadQuestions]);
+  }, [
+    loadAnnotations,
+    loadVideoInfo,
+    showFolder,
+    loadAgent,
+    loadProject,
+    loadSteps,
+    loadQuestions,
+  ]);
 
   useEffect(() => {
     if (!video) return;
@@ -261,6 +278,8 @@ function App() {
     setActiveId(null);
     setRenderedAt(null);
     setAgent(null);
+    // At once, so a response still on its way for the previous video is not shown on this one.
+    videoRef.current = path;
     setVideo(path);
   };
   useEffect(() => {
@@ -268,11 +287,11 @@ function App() {
   });
 
   const node = video ? findNode(tree, video) : undefined;
-  // Send covers the selected video's project when it has one, else the whole folder.
+  // Send covers the selected video's project when it has one, else what is in no project.
   const projectNode = project ? findNode(tree, project) : undefined;
   const questions = project == null ? [] : projectQuestions;
   // What Send sends: the open notes.
-  const openTotal = sumVideos(projectNode ? [projectNode] : tree, (n) => n.open ?? 0);
+  const openTotal = sumOwned(projectNode?.children ?? tree, (n) => n.open ?? 0);
   const makeProject = async (folder: string) => {
     await api.makeProject(folder);
     setSelectedFolder(folder);
@@ -294,6 +313,24 @@ function App() {
   };
 
   const run = (p: Promise<unknown>) => p.catch((e: Error) => setError(e.message));
+
+  /** Shows a video's annotations as a request returned them, unless another video is open by then. */
+  const annotationsOf = (path: string) => (list: Annotation[]) => {
+    if (videoRef.current === path) setAnnotations(list);
+  };
+
+  /** Adds an annotation. A failure is shown and rethrown, so the draft stays open to try again. */
+  const createAnnotation = async (path: string, draft: NewAnnotation) => {
+    try {
+      const created = await api.create(path, draft);
+      if (videoRef.current !== path) return;
+      setAnnotations((list) => [...list.filter((a) => a.id !== created.id), created]);
+      setActiveId(created.id);
+    } catch (e) {
+      setError((e as Error).message);
+      throw e;
+    }
+  };
 
   /** Asks Claude to build the draft video from the approved script. */
   const makeDraft = () => {
@@ -376,16 +413,19 @@ function App() {
             onReveal={(path) => void run(api.reveal(path))}
             onOpen={openPath}
             onRename={async (path, name) => {
-              await run(
-                api.rename(path, name).then((r) => {
-                  if (path === video) chooseVideo(r.path);
-                }),
-              );
+              try {
+                const r = await api.rename(path, name);
+                if (path === video) chooseVideo(r.path);
+              } catch (e) {
+                setError((e as Error).message);
+                throw e;
+              }
             }}
             onDelete={(path) =>
               void run(
                 api.deleteFile(path).then(() => {
-                  if (path === video) {
+                  if (path === videoRef.current) {
+                    videoRef.current = undefined;
                     setVideo(undefined);
                     setAnnotations([]);
                     setVideoInfo(null);
@@ -416,11 +456,7 @@ function App() {
               ref={docRef}
               onSelect={select}
               onDeselect={() => setActiveId(null)}
-              onCreate={async (draft) => {
-                const created = await api.create(video, draft);
-                setAnnotations((list) => [...list.filter((a) => a.id !== created.id), created]);
-                setActiveId(created.id);
-              }}
+              onCreate={(draft) => createAnnotation(video, draft)}
               onOpenPath={openPath}
               onError={showError}
               step={steps.find((s) => s.path === video)}
@@ -467,32 +503,29 @@ function App() {
               }}
               onSelect={select}
               onDeselect={() => setActiveId(null)}
-              onCreate={async (draft) => {
-                const created = await api.create(video, draft);
-                setAnnotations((list) => [...list.filter((a) => a.id !== created.id), created]);
-                setActiveId(created.id);
-              }}
+              onCreate={(draft) => createAnnotation(video, draft)}
             />
           ) : (
             <main className="player empty" />
           )}
           <AnnotationList
+            key={`notes:${video}`}
             annotations={annotations}
             activeId={activeId}
             showResolved={showResolved}
             onToggleResolved={() => setShowResolved((s) => !s)}
             onSelect={select}
-            onResolve={(a) => void run(api.resolve(video!, a.id).then(setAnnotations))}
-            onReopen={(a) => void run(api.reopen(video!, a.id).then(setAnnotations))}
+            onResolve={(a) => void run(api.resolve(video!, a.id).then(annotationsOf(video!)))}
+            onReopen={(a) => void run(api.reopen(video!, a.id).then(annotationsOf(video!)))}
             onReply={async (a, text, images) => {
-              await run(api.reply(video!, a.id, text, images).then(setAnnotations));
+              await run(api.reply(video!, a.id, text, images).then(annotationsOf(video!)));
             }}
             onEdit={async (a, change) => {
-              await run(api.edit(video!, a.id, change).then(setAnnotations));
+              await run(api.edit(video!, a.id, change).then(annotationsOf(video!)));
             }}
             onDelete={(a) => {
               if (activeId === a.id) setActiveId(null);
-              void run(api.remove(video!, a.id).then(setAnnotations));
+              void run(api.remove(video!, a.id).then(annotationsOf(video!)));
             }}
             openTotal={openTotal}
             onOpenPath={openPath}

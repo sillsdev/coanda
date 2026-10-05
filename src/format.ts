@@ -47,3 +47,15 @@ export function modelName(id: string): string {
 export function isDocument(path: string): boolean {
   return path.toLowerCase().endsWith(".md");
 }
+
+/**
+ * A count over the videos and documents in these nodes and the folders below them, leaving out
+ * every folder that is a project of its own, as Send does.
+ */
+export function sumOwned(nodes: TreeNode[], pick: (n: TreeNode) => number): number {
+  return nodes.reduce(
+    (sum, n) =>
+      sum + (n.kind !== "folder" ? pick(n) : n.project ? 0 : sumOwned(n.children ?? [], pick)),
+    0,
+  );
+}

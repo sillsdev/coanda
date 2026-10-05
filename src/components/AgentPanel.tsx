@@ -66,7 +66,6 @@ export function AgentPanel(props: Props) {
           <div className="panel-title">Claude</div>
         </div>
         <div className="agent-none">
-          <p>No project in this folder or above it.</p>
           <button className="btn btn-primary" onClick={props.onMakeProject}>
             Make project here
           </button>

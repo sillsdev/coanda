@@ -63,7 +63,8 @@ interface Session {
   sessionId?: string;
   messages: AgentMessage[];
   proc?: ChildProcessWithoutNullStreams;
-  /** Text of the assistant messages in the current turn, for finding the coanda block. */
+  /** Text of the assistant messages since the last result, for finding the coanda block. A
+   * message sent while a turn is under way leaves it alone, so that turn's block still counts. */
   turnText: string[];
   model?: string;
   contextTokens?: number;
@@ -71,6 +72,9 @@ interface Session {
   /** The instructions this conversation has: what its recorded system prompt holds, plus any
    * update sent since in a message. */
   instructions?: string;
+  /** The last message sent other than a slash command, as given to send: what a session cut off
+   * mid-turn is reminded of, shown in the chat or not. */
+  lastSent?: string;
   /** The instructions the running process was started with. */
   procInstructions?: string;
   /**
@@ -122,6 +126,8 @@ export class AgentManager {
   /** Usage limits belong to the Claude account, so one copy serves every session. */
   private limits: UsageLimits = {};
   private opts: AgentOptions;
+  /** Set by stopAll: this manager's processes are gone and another may own the sessions file. */
+  private stopped = false;
 
   constructor(opts: AgentOptions) {
     this.opts = opts;
@@ -137,10 +143,12 @@ export class AgentManager {
         contextTokens: saved.contextTokens,
         contextWindow: saved.contextWindow,
         instructions: saved.instructions,
+        lastSent: saved.lastSent,
       });
     }
     // Sessions that Coanda stopped mid-turn carry on, once whoever made this manager has it.
     setTimeout(() => {
+      if (this.stopped) return;
       for (const project of interrupted) this.resumeInterrupted(project);
     }, 0);
   }
@@ -149,7 +157,7 @@ export class AgentManager {
   private resumeInterrupted(project: string): void {
     const s = this.sessions.get(project);
     if (!s || s.proc) return;
-    const last = s.messages.findLast((m) => m.role === "user")?.text;
+    const last = s.lastSent ?? s.messages.findLast((m) => m.role === "user")?.text;
     this.send(
       project,
       "[Coanda] Coanda was restarted while you were working, which cut your turn off. Carry on " +
@@ -157,6 +165,8 @@ export class AgentManager {
         (last ? ` In case it didn't reach you, the reviewer's last message was:\n\n${last}` : ""),
       "Coanda restarted during this turn. Carrying on.",
     );
+    s.lastSent = last;
+    this.save();
   }
 
   state(project: string): AgentState {
@@ -187,6 +197,7 @@ export class AgentManager {
     // on every resume, so instructions changed since then have to travel in a message.
     // A slash command only runs when it starts the message, so it goes on its own, and changed
     // instructions wait for the next ordinary message.
+    if (!text.trimStart().startsWith("/")) s.lastSent = text;
     const current = this.instructionsFor(project);
     if (s.sessionId && s.instructions !== current && !text.trimStart().startsWith("/")) {
       text =
@@ -208,7 +219,6 @@ export class AgentManager {
     s.compacting = text.trim() === "/compact";
     // On disk at once, so a Coanda stopped from now on knows to carry on with this turn.
     this.save();
-    s.turnText = [];
     s.proc!.stdin.write(
       JSON.stringify({ type: "user", message: { role: "user", content: text } }) + "\n",
     );
@@ -221,6 +231,8 @@ export class AgentManager {
     s.proc.kill();
     s.proc = undefined;
     s.status = "idle";
+    // Saved, so a stopped turn is not carried on when the folder is next opened.
+    this.save();
     this.opts.onChange(project);
   }
 
@@ -241,7 +253,10 @@ export class AgentManager {
       const proc = s.proc;
       s.proc = undefined;
       proc?.kill();
+      clearTimeout(s.saveTimer);
     }
+    this.save();
+    this.stopped = true;
   }
 
   /** Coanda's guidance plus the project's own instructions, as a session should have them now. */
@@ -291,6 +306,7 @@ export class AgentManager {
     ];
     s.sent = 0;
     s.started = 0;
+    s.turnText = [];
     const proc = spawn(cmd, args, {
       cwd: this.opts.cwd,
       env: { ...process.env, ...this.opts.env, ...extra.env },
@@ -299,18 +315,25 @@ export class AgentManager {
     s.proc = proc;
 
     let buffer = "";
+    // Output from a process that has been stopped or replaced is dropped: it may arrive after
+    // Coanda has moved to another folder.
     proc.stdout.on("data", (chunk: Buffer) => {
+      if (s.proc !== proc) return;
       buffer += chunk.toString("utf8");
       let nl: number;
       while ((nl = buffer.indexOf("\n")) >= 0) {
         const line = buffer.slice(0, nl).trim();
         buffer = buffer.slice(nl + 1);
-        if (line) this.onLine(project, s, line);
+        if (line && s.proc === proc) this.onLine(project, s, line);
       }
     });
+    // Writing to a process that failed to start errors here; the process's own 'error' below
+    // reports the failure.
+    proc.stdin.on("error", () => {});
     let stderr = "";
     proc.stderr.on("data", (chunk: Buffer) => (stderr += chunk.toString("utf8")));
     proc.on("error", (err) => {
+      if (s.proc !== proc) return;
       this.push(project, s, { role: "error", text: err.message });
       s.status = "error";
       s.proc = undefined;
@@ -509,6 +532,7 @@ export class AgentManager {
   }
 
   private save() {
+    if (this.stopped) return;
     const file = this.opts.sessionsFile;
     let all: Record<string, unknown> = {};
     try {
@@ -526,6 +550,7 @@ export class AgentManager {
           contextTokens: s.contextTokens,
           contextWindow: s.contextWindow,
           instructions: s.instructions,
+          lastSent: s.lastSent,
           working: s.status === "working",
         };
       }
@@ -543,6 +568,7 @@ interface SavedSession {
   contextTokens?: number;
   contextWindow?: number;
   instructions?: string;
+  lastSent?: string;
   /** It was working when last saved: Coanda stopped in the middle of its turn. */
   working?: boolean;
 }

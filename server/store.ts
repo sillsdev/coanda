@@ -67,11 +67,29 @@ export class Store {
     return this.resolvePath(video) + ".coanda";
   }
 
-  /** A file and Coanda's own files beside it: its annotations and saved frames. */
+  /**
+   * A file and Coanda's own files beside it: its annotations and saved frames. For a video, also
+   * the render's files named after it (subtitles, timeline, voice report), unless another video
+   * beside it has the same name and so shares them.
+   */
   withSidecars(path: string): string[] {
-    return [this.resolvePath(path), this.annotationFilePath(path), this.frameDir(path)].filter(
-      (f) => existsSync(f),
-    );
+    const files = [this.resolvePath(path), this.annotationFilePath(path), this.frameDir(path)];
+    if (isVideoFile(path) && existsSync(this.resolvePath(path))) {
+      const stem = path.replace(/\.[^./]+$/, "");
+      const shared = VIDEO_EXTENSIONS.some(
+        (ext) =>
+          (stem + ext).toLowerCase() !== path.toLowerCase() &&
+          existsSync(this.resolvePath(stem + ext)),
+      );
+      if (!shared) {
+        files.push(
+          ...this.subtitlesFor(path).map((f) => this.resolvePath(f)),
+          this.timelinePath(path),
+          this.resolvePath(stem + ".voice.json"),
+        );
+      }
+    }
+    return files.filter((f) => existsSync(f));
   }
 
   /** Renames a file, and Coanda's files beside it, within its folder. Returns its new path. */
@@ -91,7 +109,49 @@ export class Store {
     ]) {
       if (existsSync(from) && !existsSync(to)) renameSync(from, to);
     }
+    // Annotations name their saved files by path, through the renamed file's frame folder or
+    // through the renamed folder.
+    const isFolder = statSync(this.resolvePath(next)).isDirectory();
+    const [oldRel, newRel] = isFolder ? [path, next] : [`${path}.coanda`, `${next}.coanda`];
+    const [oldFull, newFull] = [this.resolvePath(oldRel), this.resolvePath(newRel)];
+    const move = (p: string) => {
+      if (p.startsWith(oldRel + "/")) return newRel + p.slice(oldRel.length);
+      if (p.startsWith(oldFull + sep)) return newFull + p.slice(oldFull.length);
+      return p;
+    };
+    const annotated = isFolder ? this.annotationFilesUnder(next) : [next];
+    for (const video of annotated) {
+      if (!existsSync(this.annotationFilePath(video))) continue;
+      this.update(video, (data) => {
+        for (const a of data.annotations) {
+          if (a.frame) a.frame = move(a.frame);
+          if (a.images) a.images = a.images.map(move);
+          for (const m of a.thread) if (m.images) m.images = m.images.map(move);
+        }
+        if (data.reviewed) {
+          data.reviewed.copy = move(data.reviewed.copy);
+          if (data.reviewed.timeline) data.reviewed.timeline = move(data.reviewed.timeline);
+        }
+      });
+    }
     return next;
+  }
+
+  /** The files under a folder that have annotation files, as relative paths. */
+  private annotationFilesUnder(folder: string): string[] {
+    const out: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name);
+        if (entry.isDirectory()) {
+          if (!entry.name.endsWith(".coanda")) walk(full);
+        } else if (entry.name.endsWith(".coanda.json")) {
+          out.push(this.toRelative(full.slice(0, -".coanda.json".length)));
+        }
+      }
+    };
+    walk(this.resolvePath(folder));
+    return out;
   }
 
   read(video: string): AnnotationFile {
@@ -449,7 +509,7 @@ export class Store {
 }
 
 /** A name part unique to this moment, such as 20261003T182413132Z-p2ib. */
-function stampName(): string {
+export function stampName(): string {
   const stamp = new Date().toISOString().replace(/[-:.]/g, "");
   return `${stamp}-${Math.random().toString(36).slice(2, 6)}`;
 }

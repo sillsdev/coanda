@@ -29,14 +29,16 @@ interface Props {
   onReveal: (path: string) => void;
   /** Opens a file in its default app. */
   onOpen: (path: string) => void;
-  /** Renames a file within its folder. */
+  /** Renames a file within its folder; rejects when that fails. */
   onRename: (path: string, name: string) => Promise<void>;
   /** Moves a file to the Recycle Bin. */
   onDelete: (path: string) => void;
 }
 
-function hasVideo(node: TreeNode): boolean {
-  return node.kind === "video" || (node.children ?? []).some(hasVideo);
+function hasVideoOrPlan(node: TreeNode): boolean {
+  return (
+    node.kind === "video" || node.step !== undefined || (node.children ?? []).some(hasVideoOrPlan)
+  );
 }
 
 function unresolvedBelow(node: TreeNode): number {
@@ -74,8 +76,8 @@ export function VideoTree(props: Props) {
       return next;
     });
 
-  // A folder starts out open when there is a video somewhere inside it.
-  const isOpen = (node: TreeNode) => hasVideo(node) !== toggled.has(node.path);
+  // A folder starts out open when there is a video or a planning document somewhere inside it.
+  const isOpen = (node: TreeNode) => hasVideoOrPlan(node) !== toggled.has(node.path);
 
   // Open the folders above whatever gets selected, so it can be seen.
   useEffect(() => {
@@ -88,14 +90,14 @@ export function VideoTree(props: Props) {
         return false;
       });
     if (!find(tree)) return;
-    const closed = above.filter((n) => hasVideo(n) === toggled.has(n.path));
+    const closed = above.filter((n) => hasVideoOrPlan(n) === toggled.has(n.path));
     if (closed.length)
       setToggled(
         (prev) =>
           new Set(
             [...prev]
               .filter((p) => !closed.some((n) => n.path === p))
-              .concat(closed.filter((n) => !hasVideo(n)).map((n) => n.path)),
+              .concat(closed.filter((n) => !hasVideoOrPlan(n)).map((n) => n.path)),
           ),
       );
     // Only when the selection changes or the tree first arrives, not when the user closes a folder.
@@ -189,6 +191,7 @@ export function VideoTree(props: Props) {
                 <RenameField
                   name={node.name}
                   onDone={async (name) => {
+                    // A failed rename throws before the field closes, keeping the typed name.
                     if (name !== null && name !== node.name) await props.onRename(node.path, name);
                     setRenaming(null);
                   }}
@@ -272,7 +275,7 @@ export function VideoTree(props: Props) {
 }
 
 /** Edits a file's name in place: Enter or leaving the field keeps it, Escape cancels. The part
- * before the extension starts selected. */
+ * before the extension starts selected. When keeping the name fails, the field stays to try again. */
 function RenameField({
   name,
   onDone,
@@ -285,7 +288,9 @@ function RenameField({
   const finish = (result: string | null) => {
     if (done.current) return;
     done.current = true;
-    void onDone(result?.trim() || null);
+    onDone(result?.trim() || null).catch(() => {
+      done.current = false;
+    });
   };
   return (
     <input

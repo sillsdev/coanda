@@ -82,9 +82,16 @@ export function mapFromTimelines(before: Timeline, after: Timeline): TimeSegment
     const j = kept.get(i);
     if (j === undefined) continue;
     const start = old[i].t;
-    if (i === old.length - 1 || j === now.length - 1) {
+    if (i === old.length - 1) {
       // The last stretch, such as an end card, moves with its anchor.
       segments.push({ from: [start, start + TAIL], to: [now[j].t, now[j].t + TAIL] });
+      continue;
+    }
+    if (j === now.length - 1) {
+      // The new render ends here: this stretch keeps its length, and the old anchors after it
+      // were cut.
+      const length = old[i + 1].t - start;
+      segments.push({ from: [start, old[i + 1].t], to: [now[j].t, now[j].t + length] });
       continue;
     }
     segments.push({ from: [start, old[i + 1].t], to: [now[j].t, now[j + 1].t] });

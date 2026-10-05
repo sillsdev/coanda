@@ -19,6 +19,7 @@ import { dirname, extname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PLANNING_STEPS } from "../shared/types.ts";
 import type {
+  AgentStatus,
   Annotation,
   ServerEvent,
   ServerInfo,
@@ -39,7 +40,7 @@ import { osOpen, osReveal, osTrash } from "./osOpen.ts";
 import { mapFromTimelines, mapTime } from "./timeMap.ts";
 import { pickFolder } from "./pickFolder.ts";
 import { bloomLaunch, ProjectSettingsStore } from "./projectSettings.ts";
-import { isDocument, isVideoFile, PROJECT_FILE, Store } from "./store.ts";
+import { isDocument, isVideoFile, PROJECT_FILE, stampName, Store } from "./store.ts";
 
 const DIST = resolve(dirname(fileURLToPath(import.meta.url)), "..", "dist");
 /** Coanda's templates for planning documents. */
@@ -164,14 +165,17 @@ export function serve(
 
   // `coanda wait` requests parked until something is sent.
   const waiters = new Set<ServerResponse>();
-  // Sent annotations already handed to a waiter, keyed "video#id". Kept in memory
-  // only, so restarting the server hands any unanswered ones out again.
+  // Sent annotations already handed to a waiter or a project's session, keyed "video#id". Kept
+  // in memory only, so restarting the server hands any unanswered ones out again.
   const delivered = new Set<string>();
 
-  const undelivered = (): SentAnnotation[] => {
+  /** Sent annotations not yet handed out, on the files a project owns; with a null project, on
+   * the files outside every project, which go to `coanda wait`. */
+  const undelivered = (project: string | null): SentAnnotation[] => {
     const out: SentAnnotation[] = [];
     if (!store) return out;
     for (const { video, annotations } of store.allAnnotated()) {
+      if (store.projectFor(video) !== project) continue;
       for (const a of annotations) {
         if (a.status !== "sent" || delivered.has(`${video}#${a.id}`)) continue;
         out.push({
@@ -185,14 +189,44 @@ export function serve(
     return out;
   };
 
+  /** Hands what has been sent to one parked `coanda wait`; any others stay parked for the next
+   * Send. */
   const releaseWaiters = () => {
-    if (!waiters.size) return;
-    const batch = undelivered();
+    for (const w of waiters) if (w.destroyed || w.writableEnded) waiters.delete(w);
+    const [w] = waiters;
+    if (!w) return;
+    const batch = undelivered(null);
     if (!batch.length) return;
     for (const a of batch) delivered.add(`${a.video}#${a.id}`);
-    for (const w of waiters) json(w, 200, batch);
-    waiters.clear();
+    waiters.delete(w);
+    json(w, 200, batch);
     emit({ type: "status" });
+  };
+
+  /** Each project session's status when last reported, to see it change. */
+  const lastStatus = new Map<string, AgentStatus>();
+
+  /**
+   * A project's sent annotations that its session was handed but hasn't answered go back to
+   * open when the session fails or is stopped, so the next Send offers them again.
+   */
+  const reopenUnanswered = (project: string) => {
+    const s = store;
+    if (!s) return;
+    for (const { video, annotations } of s.allAnnotated()) {
+      if (s.projectFor(video) !== project) continue;
+      const stranded = annotations.filter(
+        (a) => a.status === "sent" && delivered.has(`${video}#${a.id}`),
+      );
+      if (!stranded.length) continue;
+      s.update(video, (data) => {
+        for (const a of data.annotations) {
+          if (a.status === "sent" && delivered.delete(`${video}#${a.id}`)) a.status = "open";
+        }
+      });
+      emit({ type: "annotations", video });
+      emit({ type: "tree" });
+    }
   };
 
   /** Moves a video's notes from the timeline they're on to the new render's timeline. */
@@ -258,12 +292,16 @@ export function serve(
     store = new Store(full);
     watcher = watch(full, { recursive: true }, (_type, filename) => onFileChange(filename));
     delivered.clear();
+    lastStatus.clear();
     agents?.stopAll();
     agents = new AgentManager({
       cwd: full,
       command: claudeCommand,
       sessionsFile: opts.sessionsFile ?? join(dirname(configFile), "sessions.json"),
       onChange: (project) => {
+        const status = agents?.status(project);
+        if (status === "error" && lastStatus.get(project) !== "error") reopenUnanswered(project);
+        if (status) lastStatus.set(project, status);
         emit({ type: "agent", project });
         emit({ type: "tree" });
       },
@@ -388,7 +426,10 @@ export function serve(
 
     if (path === "/api/info") return json(res, 200, info);
     if (path === "/api/status") {
-      const status: ServerStatus = { waiting: waiters.size > 0, undelivered: undelivered().length };
+      const status: ServerStatus = {
+        waiting: waiters.size > 0,
+        undelivered: undelivered(null).length,
+      };
       return json(res, 200, status);
     }
     if (path === "/api/tree") return json(res, 200, treeWithAgents());
@@ -591,6 +632,7 @@ export function serve(
     if (path === "/api/agent/stop" && method === "POST") {
       if (project === null || !agents) throw new HttpError(400, "Give a project");
       agents.stop(project);
+      reopenUnanswered(project);
       return json(res, 200, agents.state(project));
     }
 
@@ -917,13 +959,13 @@ export function serve(
 
     if (path === "/api/send" && method === "POST") {
       const store = need();
-      // With a project, the project's open annotations go to its Claude session. Without one,
-      // every open annotation goes to whoever runs `coanda wait`.
-      const inProject = (v: string) =>
-        project === null || project === "" || v.startsWith(project + "/");
+      // With a project, the open annotations on the files it owns (not those of a project inside
+      // it) go to its Claude session. Without one, the open annotations outside every project go
+      // to whoever runs `coanda wait`.
       let count = 0;
       for (const { video: v, annotations } of store.allAnnotated()) {
-        if (!inProject(v) || !annotations.some((a) => a.status === "open")) continue;
+        if (!annotations.some((a) => a.status === "open")) continue;
+        if (store.projectFor(v) !== project) continue;
         store.update(v, (data) => {
           for (const a of data.annotations) {
             if (a.status === "open") {
@@ -937,7 +979,7 @@ export function serve(
       }
       emit({ type: "tree" });
       if (project !== null && agents) {
-        const batch = undelivered().filter((a) => inProject(a.video));
+        const batch = undelivered(project);
         for (const a of batch) delivered.add(`${a.video}#${a.id}`);
         // Answers to Claude's questions go with the notes.
         const answered: AgentQuestion[] = [];
@@ -978,7 +1020,7 @@ export function serve(
     }
 
     if (path === "/api/wait" && method === "GET") {
-      const ready = undelivered();
+      const ready = undelivered(null);
       if (ready.length) {
         for (const a of ready) delivered.add(`${a.video}#${a.id}`);
         emit({ type: "status" });
@@ -1053,8 +1095,20 @@ export function serve(
     });
   });
 
+  /** Releases what setRoot started: the folder watcher, the sessions, and pending timers. */
+  const release = () => {
+    watcher?.close();
+    agents?.stopAll();
+    clearTimeout(flushTimer);
+    for (const t of voiceReportTimers.values()) clearTimeout(t);
+    voiceReportTimers.clear();
+  };
+
   return new Promise((resolvePromise, reject) => {
-    server.once("error", reject);
+    server.once("error", (err) => {
+      release();
+      reject(err);
+    });
     server.listen(opts.port, "127.0.0.1", () => {
       const address = server.address();
       const port = typeof address === "object" && address ? address.port : opts.port;
@@ -1062,8 +1116,7 @@ export function serve(
         port,
         root: info.root,
         close: () => {
-          watcher?.close();
-          agents?.stopAll();
+          release();
           for (const c of sseClients) c.end();
           for (const w of waiters) w.end();
           server.close();
@@ -1110,7 +1163,8 @@ function projectSend(store: Store, project: string, batch: SentAnnotation[]) {
   } catch {
     // An unreadable recipe is sent as null; the guidance tells the agent to write one.
   }
-  const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\..*/, "").replace("T", "-");
+  // Unique to this send, so two sends close together each keep their own copy.
+  const stamp = stampName();
   const files = [...new Set(batch.map((a) => a.video))];
   const thread = (a: SentAnnotation) =>
     a.thread.map((m) =>
@@ -1273,18 +1327,35 @@ async function readJson(req: IncomingMessage): Promise<unknown> {
   return text ? JSON.parse(text) : {};
 }
 
+/**
+ * The bytes a Range header asks for, of a file of `size` bytes: null for the whole file (no
+ * header, or one this doesn't read), "unsatisfiable" when none of the file is in it. An end past
+ * the file, or a suffix longer than it, stops at the file's end.
+ */
+export function byteRange(
+  header: string | undefined,
+  size: number,
+): { start: number; end: number } | "unsatisfiable" | null {
+  const m = header?.match(/^bytes=(\d*)-(\d*)$/);
+  if (!m || (!m[1] && !m[2])) return null;
+  const start = m[1] ? Number(m[1]) : Math.max(0, size - Number(m[2]));
+  const end = m[1] && m[2] ? Math.min(Number(m[2]), size - 1) : size - 1;
+  if (m[1] && m[2] && Number(m[2]) < start) return null;
+  if (start >= size || (!m[1] && Number(m[2]) === 0)) return "unsatisfiable";
+  return { start, end };
+}
+
 function sendFile(req: IncomingMessage, res: ServerResponse, file: string) {
   if (!existsSync(file) || !statSync(file).isFile()) throw new HttpError(404, "Not found");
   const size = statSync(file).size;
   const type = MIME[extname(file).toLowerCase()] ?? "application/octet-stream";
-  const range = req.headers.range?.match(/^bytes=(\d*)-(\d*)$/);
+  const range = byteRange(req.headers.range, size);
+  if (range === "unsatisfiable") {
+    res.writeHead(416, { "Content-Range": `bytes */${size}` });
+    return res.end();
+  }
   if (range) {
-    const start = range[1] ? Number(range[1]) : size - Number(range[2]);
-    const end = range[1] && range[2] ? Number(range[2]) : size - 1;
-    if (start >= size || end >= size || start > end) {
-      res.writeHead(416, { "Content-Range": `bytes */${size}` });
-      return res.end();
-    }
+    const { start, end } = range;
     res.writeHead(206, {
       "Content-Type": type,
       "Content-Range": `bytes ${start}-${end}/${size}`,

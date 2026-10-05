@@ -274,6 +274,8 @@ export function Player(props: Props) {
         images: pasted.images,
       });
       setDraft(null);
+    } catch {
+      // The draft stays open to try again; onCreate shows the error.
     } finally {
       setSaving(false);
     }

@@ -1,12 +1,5 @@
-import {
-  cpSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -59,8 +52,9 @@ test("each video project gets its own Claude session, which survives a restart",
     await p.getByPlaceholder("Message Claude").press("Enter");
   };
 
+  let server: Awaited<ReturnType<typeof serve>> | undefined;
   try {
-    let server = await serve(options);
+    server = await serve(options);
     await page.goto(`http://127.0.0.1:${server.port}/`);
 
     // Folders holding video-project.json are projects, each with a status dot.
@@ -96,7 +90,7 @@ test("each video project gets its own Claude session, which survives a restart",
     // It was started in auto mode, in the reviewed folder, with Coanda's instructions.
     const started = readFake(first).starts[0];
     expect(started.args).toEqual(expect.arrayContaining(["--permission-mode", "auto"]));
-    expect(started.args).toContain("--append-system-prompt");
+    expect(started.args).toContain("--append-system-prompt-file");
     expect(started.args).not.toContain("--resume");
     expect(resolve(started.cwd)).toBe(resolve(root));
 
@@ -156,10 +150,11 @@ test("each video project gets its own Claude session, which survives a restart",
     await page.locator('[data-path="advanced/editing-tips.webm"]').click();
     await expect(page.getByTestId("time")).toContainText("0:12");
     await expect(panel.getByRole("button", { name: "Make project here" })).toBeVisible();
-    server.close();
   } finally {
+    server?.close();
     delete process.env.FAKE_CLAUDE_STATE;
-    if (existsSync(scratch))
-      rmSync(scratch, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    // Asynchronously: the closed folder watcher lets go of the folder only once the event loop
+    // turns, which a synchronous delete never lets it do.
+    await rm(scratch, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   }
 });

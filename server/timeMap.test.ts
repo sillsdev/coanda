@@ -78,6 +78,25 @@ test("timelines: a reworded line keeps its notes, and final punctuation doesn't 
   expect(mapTime(12, map)).toEqual({ t: 11, cut: false });
 });
 
+test("timelines: notes on a removed ending are cut", () => {
+  const before = {
+    anchors: [
+      { key: "intro", t: 0 },
+      { key: "summary", t: 10 },
+      { key: "credits", t: 20 },
+    ],
+  };
+  const after = {
+    anchors: [
+      { key: "intro", t: 0 },
+      { key: "summary", t: 10 },
+    ],
+  };
+  const map = mapFromTimelines(before, after);
+  expect(mapTime(15, map)).toEqual({ t: 15, cut: false });
+  expect(mapTime(22, map)).toEqual({ t: 20, cut: true });
+});
+
 test("timelines: an inserted moment doesn't stretch the notes before it over itself", () => {
   const before = {
     anchors: [

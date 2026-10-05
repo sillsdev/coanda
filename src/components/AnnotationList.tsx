@@ -25,7 +25,6 @@ interface Props {
   openTotal: number;
   onSend: () => void;
   onOpenPath: (path: string) => void;
-  /** Answers a question; an empty answer takes it back. */
 }
 
 export function AnnotationList(props: Props) {

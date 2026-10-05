@@ -86,53 +86,103 @@ export function DocView(props: Props) {
   useEffect(() => {
     textRef.current = text;
   }, [text]);
-
-  // Load the document, and again when it changes on disk, unless there's unsaved typing.
+  const conflictRef = useRef(conflict);
   useEffect(() => {
-    let live = true;
-    api.doc(path).then(
-      (d) => {
-        if (!live) return;
-        const saved = savedRef.current;
-        const dirty = saved !== null && textRef.current !== saved.text;
-        if (dirty && d.text !== textRef.current) {
-          setConflict(true);
-          return;
-        }
+    conflictRef.current = conflict;
+  }, [conflict]);
+  const mountedRef = useRef(false);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+  // A write is on its way; another waits for it, so each is based on the one before.
+  const writingRef = useRef(false);
+  // The file changed on disk during a write, to be read again once the write is done.
+  const loadAfterWriteRef = useRef(false);
+
+  /** Reads the document from disk, keeping unsaved typing. */
+  const load = useCallback(() => {
+    const apply = (d: DocText) => {
+      if (!mountedRef.current) return;
+      if (writingRef.current) {
+        loadAfterWriteRef.current = true;
+        return;
+      }
+      const saved = savedRef.current;
+      // The text last saved or loaded, perhaps with typing since: nothing new on disk.
+      if (saved && d.text === saved.text) {
         savedRef.current = d;
-        setDoc(d);
-        setText(d.text);
-        setConflict(false);
-      },
+        return;
+      }
+      const dirty = saved !== null && textRef.current !== saved.text;
+      if (dirty && d.text !== textRef.current) {
+        setConflict(true);
+        return;
+      }
+      savedRef.current = d;
+      setDoc(d);
+      setText(d.text);
+      setConflict(false);
+    };
+    api.doc(path).then(
+      apply,
       // A document deleted or renamed while open just goes; the sidebar shows what's there now.
       (e: Error) => !/^No document/.test(e.message) && onError(e.message),
     );
-    return () => {
-      live = false;
-    };
-  }, [path, version, onError]);
+  }, [path, onError]);
+
+  /** Writes the typing to disk until the file has the latest of it, one write at a time. */
+  const save = useCallback(async () => {
+    if (writingRef.current) return;
+    writingRef.current = true;
+    try {
+      for (;;) {
+        const saved = savedRef.current;
+        const latest = textRef.current;
+        if (!saved || conflictRef.current || latest === saved.text) break;
+        try {
+          const d = await api.saveDoc(path, latest, saved.mtime);
+          savedRef.current = d;
+          if (mountedRef.current) setDoc(d);
+        } catch (e) {
+          const message = (e as Error).message;
+          if (/changed on disk/i.test(message)) {
+            conflictRef.current = true;
+            if (mountedRef.current) setConflict(true);
+          } else onError(message);
+          break;
+        }
+      }
+    } finally {
+      writingRef.current = false;
+    }
+    if (loadAfterWriteRef.current) {
+      loadAfterWriteRef.current = false;
+      load();
+    }
+  }, [path, onError, load]);
+
+  // Load the document, and again when it changes on disk.
+  useEffect(() => {
+    load();
+  }, [load, version]);
 
   // Save typing once it pauses.
   useEffect(() => {
     const saved = savedRef.current;
     if (!saved || text === saved.text || conflict) return;
-    const timer = setTimeout(() => {
-      api.saveDoc(path, text, saved.mtime).then(
-        (d) => {
-          savedRef.current = d;
-          setDoc(d);
-        },
-        (e: Error) => {
-          if (/changed on disk/i.test(e.message)) setConflict(true);
-          else onError(e.message);
-        },
-      );
-    }, SAVE_AFTER_MS);
+    const timer = setTimeout(() => void save(), SAVE_AFTER_MS);
     return () => clearTimeout(timer);
-  }, [text, path, conflict, onError]);
+  }, [text, conflict, save]);
+
+  // Leaving the document saves typing that has not waited out its pause yet.
+  useEffect(() => () => void save(), [save]);
 
   const reload = () => {
     savedRef.current = null;
+    conflictRef.current = false;
     setConflict(false);
     api.doc(path).then(
       (d) => {
@@ -270,6 +320,8 @@ export function DocView(props: Props) {
       setDraft(null);
       pasted.clear();
       getSelection()?.removeAllRanges();
+    } catch {
+      // The draft stays open to try again; onCreate shows the error.
     } finally {
       setSaving(false);
     }

@@ -1139,12 +1139,6 @@
   gap: 12px;
 }
 
-.agent-none p {
-  margin: 0;
-  font-size: 13px;
-  color: var(--text-dim);
-}
-
 .context-menu {
   position: fixed;
   z-index: 50;
