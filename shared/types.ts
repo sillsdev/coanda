@@ -246,6 +246,8 @@ export interface AgentState {
   workingSince?: string;
   /** While working: the work is Claude Code's /compact. */
   compacting?: boolean;
+  /** Commands Claude left running in the background, by their descriptions. */
+  background?: string[];
 }
 
 export interface UsageWindow {

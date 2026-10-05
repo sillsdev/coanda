@@ -13,16 +13,24 @@ export function AgentStatusBadge({
   status,
   withLabel = true,
   compacting = false,
+  waiting = false,
 }: {
   status: AgentStatus;
   withLabel?: boolean;
   /** Working on Claude Code's /compact. */
   compacting?: boolean;
+  /** Between turns, with commands still running in the background. */
+  waiting?: boolean;
 }) {
-  const label = status === "working" && compacting ? "Compacting" : LABELS[status];
+  const label =
+    status === "working" && compacting
+      ? "Compacting"
+      : status !== "working" && waiting
+        ? "Waiting"
+        : LABELS[status];
   return (
     <span
-      className={`agent-badge ${status}`}
+      className={`agent-badge ${status}${waiting && status !== "working" ? " waiting" : ""}`}
       data-status={status}
       title={withLabel ? undefined : label}
     >

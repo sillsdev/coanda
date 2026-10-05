@@ -1063,6 +1063,22 @@
   animation: agent-pulse 1.2s ease-in-out infinite;
 }
 
+.agent-badge.waiting .agent-dot {
+  background: var(--accent-light);
+  box-shadow: 0 0 0 3px rgba(106, 156, 245, 0.25);
+  animation: agent-pulse 2.4s ease-in-out infinite;
+}
+
+.agent-background {
+  min-width: 0;
+  margin-left: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 11.5px var(--font-mono);
+  color: var(--text-faint);
+}
+
 .agent-badge.done .agent-dot {
   background: var(--go);
 }

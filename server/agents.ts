@@ -74,6 +74,9 @@ interface Session {
   instructions?: string;
   /** The last message sent other than a slash command, as given to send: what a session cut off
    * mid-turn is reminded of, shown in the chat or not. */
+  /** Commands Claude left running in the background; when one finishes, Claude starts a
+   * turn of its own. */
+  background?: BackgroundTask[];
   lastSent?: string;
   /** The instructions the running process was started with. */
   procInstructions?: string;
@@ -131,9 +134,11 @@ export class AgentManager {
 
   constructor(opts: AgentOptions) {
     this.opts = opts;
-    const interrupted: string[] = [];
+    const interrupted: { project: string; turn: boolean; killed: BackgroundTask[] }[] = [];
     for (const [project, saved] of Object.entries(this.loadSaved())) {
-      if (saved.working) interrupted.push(project);
+      if (saved.working || saved.background?.length) {
+        interrupted.push({ project, turn: !!saved.working, killed: saved.background ?? [] });
+      }
       this.sessions.set(project, {
         status: "idle",
         sessionId: saved.sessionId,
@@ -146,26 +151,42 @@ export class AgentManager {
         lastSent: saved.lastSent,
       });
     }
-    // Sessions that Coanda stopped mid-turn carry on, once whoever made this manager has it.
+    // Sessions that Coanda stopped mid-turn, or with commands running in the background, carry
+    // on once whoever made this manager has it.
     setTimeout(() => {
       if (this.stopped) return;
-      for (const project of interrupted) this.resumeInterrupted(project);
+      for (const i of interrupted) this.resumeInterrupted(i.project, i.turn, i.killed);
     }, 0);
   }
 
-  /** Restarts a session whose turn was cut off when Coanda stopped, telling it so. */
-  private resumeInterrupted(project: string): void {
+  /** Restarts a session whose turn, or whose background commands, Coanda cut off when it
+   * stopped, telling it so. */
+  private resumeInterrupted(project: string, turn: boolean, killed: BackgroundTask[]): void {
     const s = this.sessions.get(project);
     if (!s || s.proc) return;
     const last = s.lastSent ?? s.messages.findLast((m) => m.role === "user")?.text;
+    const commands = killed.map((t) => `- ${t.description}`).join("\n");
+    const stopped = killed.length
+      ? ` Stopping also killed ${killed.length === 1 ? "the command" : "the commands"} you had ` +
+        `running in the background, which didn't finish:\n\n${commands}\n\nSay so, and start ` +
+        `${killed.length === 1 ? "it" : "them"} again if still needed.`
+      : "";
     this.send(
       project,
-      "[Coanda] Coanda was restarted while you were working, which cut your turn off. Carry on " +
-        "from where you were, starting with a line saying what you're doing." +
-        (last ? ` In case it didn't reach you, the reviewer's last message was:\n\n${last}` : ""),
-      "Coanda restarted during this turn. Carrying on.",
+      turn
+        ? "[Coanda] Coanda was restarted while you were working, which cut your turn off." +
+            stopped +
+            " Carry on from where you were, starting with a line saying what you're doing." +
+            (last
+              ? ` In case it didn't reach you, the reviewer's last message was:\n\n${last}`
+              : "")
+        : "[Coanda] Coanda was restarted while you were waiting." + stopped,
+      turn
+        ? "Coanda restarted during this turn. Carrying on."
+        : "Coanda restarted and stopped what was running in the background.",
     );
     s.lastSent = last;
+    s.background = [];
     this.save();
   }
 
@@ -181,6 +202,7 @@ export class AgentManager {
       limits: this.limits,
       ...(s?.status === "working" && s.workingSince ? { workingSince: s.workingSince } : {}),
       ...(s?.status === "working" && s.compacting ? { compacting: true } : {}),
+      ...(s?.background?.length ? { background: s.background.map((t) => t.description) } : {}),
     };
   }
 
@@ -387,6 +409,24 @@ export class AgentManager {
       }
       return;
     }
+    if (m.type === "system" && m.subtype === "background_tasks_changed") {
+      s.background = (m.tasks ?? []).map((t) => ({
+        id: typeof t.task_id === "string" ? t.task_id : "",
+        description: typeof t.description === "string" ? t.description : "",
+      }));
+      this.save();
+      this.opts.onChange(project);
+      return;
+    }
+    if (m.type === "system" && m.subtype === "task_notification" && s.status !== "working") {
+      // A background command finished, and Claude starts a turn of its own on it.
+      s.status = "working";
+      s.workingSince = new Date().toISOString();
+      s.compacting = false;
+      this.save();
+      this.opts.onChange(project);
+      return;
+    }
     if (m.type === "system" && m.subtype === "compact_boundary") {
       const meta = m.compact_metadata;
       if (typeof meta?.post_tokens === "number") s.contextTokens = meta.post_tokens;
@@ -552,6 +592,7 @@ export class AgentManager {
           instructions: s.instructions,
           lastSent: s.lastSent,
           working: s.status === "working",
+          ...(s.background?.length ? { background: s.background } : {}),
         };
       }
     }
@@ -559,6 +600,11 @@ export class AgentManager {
     mkdirSync(dirname(file), { recursive: true });
     writeFileSync(file, JSON.stringify(all, null, 2) + "\n");
   }
+}
+
+interface BackgroundTask {
+  id: string;
+  description: string;
 }
 
 interface SavedSession {
@@ -571,6 +617,8 @@ interface SavedSession {
   lastSent?: string;
   /** It was working when last saved: Coanda stopped in the middle of its turn. */
   working?: boolean;
+  /** Background commands running when last saved, which stopping Coanda killed. */
+  background?: BackgroundTask[];
 }
 
 interface StreamMessage {
@@ -596,6 +644,8 @@ interface StreamMessage {
   };
   modelUsage?: Record<string, { contextWindow?: number }>;
   compact_metadata?: { pre_tokens?: number; post_tokens?: number };
+  /** On background_tasks_changed: the background commands now running. */
+  tasks?: { task_id?: unknown; description?: unknown }[];
   rate_limit_info?: {
     unifiedWindows?: { five_hour?: UsageWindow; seven_day?: UsageWindow };
   };

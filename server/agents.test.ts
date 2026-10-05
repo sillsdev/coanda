@@ -155,3 +155,61 @@ test("a turn cut off by a restart is carried on with the last message sent, show
   const saved = JSON.parse(readFileSync(join(dir, "sessions.json"), "utf8"))[dir.toLowerCase()].p;
   expect(saved.lastSent).toBe("Answer: yes");
 });
+
+// A stand-in for Claude Code that leaves a command running in the background, ends its turn,
+// and starts a turn of its own when the command finishes, as Claude Code does.
+const BACKGROUND = `
+import { createInterface } from "node:readline";
+const out = (m) => process.stdout.write(JSON.stringify(m) + "\\n");
+out({ type: "system", subtype: "init", session_id: "s2", model: "m" });
+createInterface({ input: process.stdin }).on("line", (line) => {
+  const text = JSON.parse(line).message.content;
+  out({ type: "user", isReplay: true, message: { role: "user", content: text } });
+  out({ type: "assistant", message: { content: [{ type: "text", text: "Got: " + text }] } });
+  if (!text.startsWith("record")) return out({ type: "result", is_error: false });
+  out({ type: "system", subtype: "background_tasks_changed", tasks: [{ task_id: "b1", description: "record take 4" }] });
+  out({ type: "result", is_error: false });
+  setTimeout(() => {
+    out({ type: "system", subtype: "background_tasks_changed", tasks: [] });
+    out({ type: "system", subtype: "task_notification", task_id: "b1", status: "completed" });
+    out({ type: "assistant", message: { content: [{ type: "text", text: "Recorded." }] } });
+    setTimeout(() => out({ type: "result", is_error: false }), 300);
+  }, Number(process.env.FINISH_AFTER ?? 600));
+});
+`;
+
+test("a command left running in the background shows, and Claude's own turn after it is working", async () => {
+  writeFileSync(join(dir, "background.mjs"), BACKGROUND);
+  const agents = make({ command: [process.execPath, join(dir, "background.mjs")] });
+  agents.send("p", "record it");
+  await until(() => agents.status("p") === "done" && !!agents.state("p").background);
+  expect(agents.state("p").background).toEqual(["record take 4"]);
+  await until(() => agents.status("p") === "working");
+  expect(agents.state("p").workingSince).toBeTruthy();
+  await until(() => agents.status("p") === "done" && !agents.state("p").background);
+  expect(agents.state("p").messages.at(-1)?.text).toBe("Recorded.");
+});
+
+test("a restart tells Claude which background commands it killed", async () => {
+  writeFileSync(join(dir, "background.mjs"), BACKGROUND);
+  process.env.FINISH_AFTER = "60000";
+  try {
+    const command = [process.execPath, join(dir, "background.mjs")];
+    const first = make({ command });
+    first.send("p", "record it");
+    await until(() => !!first.state("p").background);
+    first.stopAll();
+    const second = make({ command });
+    await until(() => second.state("p").messages.some((m) => m.text.includes("record take 4")));
+    const told = second.state("p").messages.find((m) => m.text.startsWith("Got: [Coanda]"));
+    expect(told?.text).toContain("killed the command");
+    expect(told?.text).toContain("- record take 4");
+    expect(
+      second
+        .state("p")
+        .messages.some((m) => m.role === "user" && /stopped what was running/.test(m.text)),
+    ).toBe(true);
+  } finally {
+    delete process.env.FINISH_AFTER;
+  }
+});
